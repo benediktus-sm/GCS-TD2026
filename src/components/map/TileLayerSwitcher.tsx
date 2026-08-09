@@ -1,0 +1,221 @@
+/**
+ * @module TileLayerSwitcher
+ * @description Replaces the static TileLayer with a switchable tile source.
+ * Renders the active tile layer and a small control button to cycle between
+ * CARTO Dark, OpenStreetMap, and Esri Satellite imagery. Persists selection
+ * to settings-store. Supports offline tile caching via IndexedDB and
+ * no-fly zone overlay toggle.
+ * @license GPL-3.0-only
+ */
+
+"use client";
+
+import { useState, useCallback, useEffect, useRef } from "react";
+import { useMap } from "react-leaflet";
+import { useSettingsStore, type MapTileSource } from "@/stores/settings-store";
+import L from "leaflet";
+import { CachedTileLayer } from "./CachedTileLayer";
+import { NoFlyZoneOverlay } from "./NoFlyZoneOverlay";
+
+interface TileConfig {
+  url: string;
+  attribution: string;
+  maxZoom: number;
+  subdomains?: string[];
+}
+
+const TILE_CONFIGS: Record<MapTileSource, TileConfig> = {
+  google_hybrid: {
+    url: "https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
+    attribution: "&copy; Google Maps",
+    maxZoom: 20,
+    subdomains: ["mt0", "mt1", "mt2", "mt3"],
+  },
+  google_satellite: {
+    url: "https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+    attribution: "&copy; Google Maps",
+    maxZoom: 20,
+    subdomains: ["mt0", "mt1", "mt2", "mt3"],
+  },
+  google_roadmap: {
+    url: "https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
+    attribution: "&copy; Google Maps",
+    maxZoom: 20,
+    subdomains: ["mt0", "mt1", "mt2", "mt3"],
+  },
+  google_terrain: {
+    url: "https://{s}.google.com/vt/lyrs=t&x={x}&y={y}&z={z}",
+    attribution: "&copy; Google Maps",
+    maxZoom: 20,
+    subdomains: ["mt0", "mt1", "mt2", "mt3"],
+  },
+  dark: {
+    url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
+    maxZoom: 20,
+  },
+  osm: {
+    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19,
+  },
+  satellite: {
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    attribution: '&copy; <a href="https://www.esri.com/">Esri</a>',
+    maxZoom: 18,
+  },
+  terrain: {
+    url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+    attribution: '&copy; <a href="https://opentopomap.org">OpenTopoMap</a>',
+    maxZoom: 17,
+  },
+};
+
+const TILE_LABELS: Record<MapTileSource, string> = {
+  google_hybrid: "G.HYB",
+  google_satellite: "G.SAT",
+  google_roadmap: "G.ROAD",
+  google_terrain: "G.TERR",
+  dark: "DARK",
+  osm: "OSM",
+  satellite: "SAT (ESRI)",
+  terrain: "TOPO",
+};
+
+const TILE_ORDER: MapTileSource[] = [
+  "google_hybrid",
+  "google_satellite",
+  "google_roadmap",
+  "google_terrain",
+  "dark",
+  "osm",
+  "satellite",
+  "terrain",
+];
+
+/** TileLayer that uses setUrl() on source change instead of unmounting/remounting.
+ *  Preserves loaded tiles during transition for smoother switching. */
+function ManagedTileLayer({ url, attribution, maxZoom, subdomains }: { url: string; attribution: string; maxZoom: number; subdomains?: string[] }) {
+  const map = useMap();
+  const layerRef = useRef<L.TileLayer | null>(null);
+  const initialUrlRef = useRef(url);
+
+  // Create layer once on mount
+  useEffect(() => {
+    const layer = L.tileLayer(initialUrlRef.current, { attribution, maxZoom, subdomains });
+    try {
+      layer.addTo(map);
+      layerRef.current = layer;
+    } catch (err) {
+      console.warn("[TileLayerSwitcher] skipped stale map layer attach", err);
+      return;
+    }
+    return () => {
+      if (layerRef.current) {
+        try {
+          map.removeLayer(layerRef.current);
+        } catch {
+          /* map may already be destroyed during dev reconnect */
+        }
+        layerRef.current = null;
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map]);
+
+  // Update URL without remounting
+  useEffect(() => {
+    if (layerRef.current && layerRef.current.getTileUrl !== undefined) {
+      layerRef.current.setUrl(url);
+    }
+  }, [url]);
+
+  return null;
+}
+
+interface TileLayerSwitcherProps {
+  showControls?: boolean;
+}
+
+export function TileLayerSwitcher({ showControls = true }: TileLayerSwitcherProps) {
+  const source = useSettingsStore((s) => s.mapTileSource);
+  const setSource = useSettingsStore((s) => s.setMapTileSource);
+  const cachingEnabled = useSettingsStore((s) => s.offlineTileCaching);
+  const showNfz = useSettingsStore((s) => s.showNoFlyZones);
+  const setShowNfz = useSettingsStore((s) => s.setShowNoFlyZones);
+  const [showPicker, setShowPicker] = useState(false);
+
+  const config = TILE_CONFIGS[source] ?? TILE_CONFIGS.google_hybrid;
+
+  const handleSelect = useCallback((s: MapTileSource) => {
+    setSource(s);
+    setShowPicker(false);
+  }, [setSource]);
+
+  return (
+    <>
+      {cachingEnabled ? (
+        <CachedTileLayer
+          url={config.url}
+          attribution={config.attribution}
+          maxZoom={config.maxZoom}
+          subdomains={config.subdomains}
+        />
+      ) : (
+        <ManagedTileLayer
+          url={config.url}
+          attribution={config.attribution}
+          maxZoom={config.maxZoom}
+          subdomains={config.subdomains}
+        />
+      )}
+
+      {/* No-fly zone overlay */}
+      <NoFlyZoneOverlay visible={showControls && showNfz} />
+
+      {/* Layer switcher control — top right */}
+      {showControls && (
+        <div className="leaflet-top leaflet-right" style={{ pointerEvents: "auto" }}>
+          <div className="leaflet-control" style={{ marginTop: 10, marginRight: 10 }}>
+            <button
+              onClick={() => setShowPicker((v) => !v)}
+              className="bg-bg-primary/90 backdrop-blur-md border border-border-strong rounded px-2 py-1 text-[10px] font-mono text-text-secondary hover:text-text-primary transition-colors shadow-lg"
+              title="Switch map tiles"
+            >
+              {TILE_LABELS[source] ?? "MAP"}
+            </button>
+            {showPicker && (
+              <div className="mt-1 bg-bg-primary/90 backdrop-blur-md border border-border-strong rounded shadow-lg">
+                {TILE_ORDER.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => handleSelect(s)}
+                    className={`block w-full text-left px-3 py-1.5 text-[10px] font-mono transition-colors rounded-sm ${
+                      s === source
+                        ? "text-accent-primary bg-surface-secondary"
+                        : "text-text-secondary hover:text-text-primary hover:bg-surface-secondary"
+                    }`}
+                  >
+                    {TILE_LABELS[s]}
+                  </button>
+                ))}
+                {/* Separator + NFZ toggle */}
+                <div className="border-t border-border-strong my-0.5" />
+                <button
+                  onClick={() => setShowNfz(!showNfz)}
+                  className={`block w-full text-left px-3 py-1.5 text-[10px] font-mono transition-colors rounded-sm ${
+                    showNfz
+                      ? "text-status-error bg-status-error/10"
+                      : "text-text-secondary hover:text-text-primary hover:bg-surface-secondary"
+                  }`}
+                >
+                  {showNfz ? "NFZ ON" : "NFZ OFF"}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}

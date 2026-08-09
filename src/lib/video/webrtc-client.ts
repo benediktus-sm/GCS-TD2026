@@ -1,0 +1,914 @@
+// Exempt from 300 LOC soft rule: single self-contained WebRTC client, no clean cleavage
+/**
+ * WebRTC video stream client for Altnautica Command GCS.
+ *
+ * Connects to a mediamtx server via WHEP (WebRTC-HTTP Egress Protocol)
+ * for low-latency H.264/H.265 video. Provides:
+ * - Stream start/stop
+ * - MediaRecorder for local recording (WebM/VP8)
+ * - Canvas-based screenshot capture
+ * - FPS/latency stats
+ *
+ * @module video/webrtc-client
+ */
+
+import { useVideoStore, type TransportErrorCode, type TransportAttemptStage, type VideoTransport } from "@/stores/video-store";
+
+// pc/mediaRecorder/statsInterval/videoElement are session-scoped and get
+// re-initialized cleanly on every startStream call. The per-poll DELTA
+// STATE (lastFramesDecoded, lastStatsTime, etc.) used to live in
+// module-level globals here too, but Turbopack HMR re-evaluated the
+// module on every unrelated file change and reset them to 0, breaking
+// the FPS counter. That state now lives in useVideoStore._pollState
+// which is HMR-safe (Zustand stores live on globalThis).
+let pc: RTCPeerConnection | null = null;
+let mediaRecorder: MediaRecorder | null = null;
+let recordedChunks: Blob[] = [];
+let statsInterval: ReturnType<typeof setInterval> | null = null;
+let videoElement: HTMLVideoElement | null = null;
+
+import {
+  MQTT_SIGNALING_WS_URL,
+  MQTT_CONNECT_TIMEOUT_MS,
+  MQTT_ANSWER_TIMEOUT_MS,
+  ICE_GATHER_TIMEOUT_MS,
+  ONTRACK_TIMEOUT_MS,
+  LAN_ICE_GATHER_TIMEOUT_MS,
+  LAN_ONTRACK_TIMEOUT_MS,
+  CROSS_NETWORK_ICE_SERVERS,
+} from "./webrtc-constants";
+import {
+  mungeForLowLatency,
+  checkAborted,
+  abortable,
+  classifyError,
+  detectTransportFromUrl,
+} from "./webrtc-helpers";
+
+export {
+  mungeForLowLatency,
+  checkAborted,
+  abortable,
+  classifyError,
+  detectTransportFromUrl,
+};
+
+// Shared helpers for the cascade hook to thread per-mode health updates
+// from inside the WebRTC client.
+function reportHealth(
+  transport: VideoTransport,
+  patch: { state?: "testing" | "ok" | "failed"; stage?: TransportAttemptStage; code?: TransportErrorCode; error?: string; connectMs?: number },
+): void {
+  useVideoStore.getState().setTransportHealth(transport, {
+    state: patch.state,
+    lastAttemptStage: patch.stage ?? null,
+    lastErrorCode: patch.code ?? null,
+    lastError: patch.error ?? null,
+    connectMs: patch.connectMs ?? null,
+  });
+}
+
+/**
+ * Tear down a PeerConnection cleanly across browsers.
+ *
+ * Safari leaves MediaStreamTracks in the "live" state after pc.close(),
+ * which holds the camera/mic permission and forces the next stream
+ * start to re-prompt the user. Stopping every receiver and sender track
+ * before closing the connection releases those resources deterministically.
+ *
+ * Also nulls the event handlers BEFORE close() to suppress spurious
+ * onconnectionstatechange("closed") callbacks during teardown that
+ * re-enter store updates (w3c/webrtc-pc#1218).
+ *
+ * Idempotent and exception-safe — every step is individually try/caught.
+ */
+function closePeerConnection(target: RTCPeerConnection | null): void {
+  if (!target) return;
+  try {
+    target.ontrack = null;
+    target.onconnectionstatechange = null;
+    target.onicecandidateerror = null;
+    target.oniceconnectionstatechange = null;
+    target.onicegatheringstatechange = null;
+    target.onsignalingstatechange = null;
+  } catch { /* noop */ }
+  try {
+    target.getReceivers().forEach((r) => {
+      try { r.track?.stop(); } catch { /* noop */ }
+    });
+  } catch { /* noop */ }
+  try {
+    target.getSenders().forEach((s) => {
+      try { s.track?.stop(); } catch { /* noop */ }
+    });
+  } catch { /* noop */ }
+  try {
+    target.close();
+  } catch { /* noop */ }
+}
+
+// ICE restart cooldown: only attempt once per 5 seconds to
+// avoid thrash on flapping networks.
+//
+// Takes a targetPc parameter so handlers can pass their own captured pc
+// reference. Refuses to restart if targetPc isn't the current active pc
+// (cascade may have moved on to a different transport).
+let lastIceRestartAt = 0;
+function tryIceRestart(targetPc: RTCPeerConnection): void {
+  if (targetPc !== pc) return; // a newer pc has taken over
+  if (targetPc.connectionState === "closed") return;
+  if (typeof targetPc.restartIce !== "function") return; // older browsers
+  const now = Date.now();
+  if (now - lastIceRestartAt < 5000) return;
+  lastIceRestartAt = now;
+  try {
+    targetPc.restartIce();
+    console.log("[webrtc-client] ICE restart triggered after disconnect");
+  } catch (err) {
+    console.warn("[webrtc-client] ICE restart failed:", err);
+  }
+}
+
+/**
+ * Start a WebRTC stream from a WHEP endpoint.
+ *
+ * @param whepUrl — Full WHEP URL, e.g. `http://192.168.1.50:8889/stream/whep`
+ * @param signal  — Optional AbortSignal. When fired, the function aborts at
+ *                  the next checkpoint and throws AbortError. Used by the
+ *                  cascade hook to cancel a mode mid-attempt without
+ *                  leaving a stale background continuation.
+ * @returns The MediaStream to attach to a <video> element.
+ */
+export async function startStream(
+  whepUrl: string,
+  signal?: AbortSignal,
+): Promise<MediaStream> {
+  const store = useVideoStore.getState();
+  const startedAt = Date.now();
+  const transport: VideoTransport = detectTransportFromUrl(whepUrl);
+
+  // Report testing state for the cascade UX
+  reportHealth(transport, { state: "testing", stage: "starting" });
+
+  // Clean up any stale connection before starting fresh
+  if (pc) {
+    closePeerConnection(pc);
+    pc = null;
+    stopStatsPolling();
+  }
+
+  // Hold a local reference so handlers can verify they're still the
+  // active pc. The module-level `pc` may be replaced by a parallel call
+  // (e.g. cascade switching modes) and we don't want stale handlers to
+  // operate on the wrong connection.
+  let localPc: RTCPeerConnection | null = null;
+
+  try {
+    checkAborted(signal);
+
+    const newPc = new RTCPeerConnection({
+      iceServers: [], // Local network — no STUN/TURN needed
+    });
+    localPc = newPc;
+    pc = newPc;
+
+    // Part I P0-5 + P1-7: capture newPc (a const) in the handler closure.
+    // Even if a parallel call replaces the global pc, this handler still
+    // refers to ITS OWN connection, and bails on the (newPc !== pc) check.
+    newPc.onconnectionstatechange = () => {
+      if (newPc !== pc) return; // a newer pc has taken over
+      const state = newPc.connectionState;
+      if (state === "disconnected") {
+        console.warn("[webrtc-client] LAN WHEP disconnected — attempting ICE restart");
+        tryIceRestart(newPc);
+      } else if (state === "failed" || state === "closed") {
+        console.warn("[webrtc-client] LAN WHEP terminal state:", state);
+        const s = useVideoStore.getState();
+        s.setStreaming(false);
+        s.updateStats(0, 0);
+        stopStatsPolling();
+        reportHealth(transport, {
+          state: "failed",
+          stage: "connected",
+          code: "ice-disconnect",
+          error: `Connection ${state}`,
+        });
+      }
+    };
+
+    // Receive-only transceiver. Capture the video transceiver so the
+    // receiver-side playout hints can be set before negotiation begins.
+    //
+    // playoutDelayHint=0: chrome.webrtc-internals shows that the
+    // default RTCRtpReceiver targets a playout buffer in the 100-200 ms
+    // range for live streams. With a healthy LAN link this is pure
+    // latency tax; the value is treated as a hint (not a hard
+    // ceiling) so the stack still grows the buffer if jitter
+    // demands it. Browsers that don't implement the property ignore
+    // the assignment (silent no-op via property check).
+    //
+    // jitterBufferTarget=50: Chrome-only and experimental, sets a
+    // preferred lower bound on the jitter buffer in ms. 50 ms is the
+    // FPV-grade default; on a flaky link the buffer still expands
+    // automatically. Strictly additive to playoutDelayHint.
+    //
+    // Distinct from the previously-removed mungeForLowLatency() SDP
+    // hack (lines below). That mechanism pinned Chrome's MINIMUM
+    // jitter buffer via the conference flag and caused decoder
+    // stalls on WiFi reordering. These are *receiver-side runtime
+    // properties* — they suggest a target without forcing a hard
+    // floor — so the failure mode of the prior approach does not
+    // apply.
+    const videoTransceiver = localPc.addTransceiver("video", {
+      direction: "recvonly",
+    });
+    try {
+      const recv = videoTransceiver.receiver as RTCRtpReceiver & {
+        playoutDelayHint?: number;
+        jitterBufferTarget?: number;
+      };
+      if ("playoutDelayHint" in recv) {
+        recv.playoutDelayHint = 0;
+      }
+      if ("jitterBufferTarget" in recv) {
+        recv.jitterBufferTarget = 50;
+      }
+    } catch (err) {
+      // Browser without the receiver-side hint API — log once and
+      // continue. Default Chrome / Edge / Opera support it; older
+      // Firefox and Safari builds fall back to their internal
+      // defaults.
+      console.debug(
+        "[webrtc-client] receiver-side latency hints unavailable",
+        err,
+      );
+    }
+    localPc.addTransceiver("audio", { direction: "recvonly" });
+
+    const offer = await abortable(localPc.createOffer(), signal);
+    checkAborted(signal);
+    await abortable(localPc.setLocalDescription(offer), signal);
+    checkAborted(signal);
+
+    // Wait for ICE gathering to complete (or LAN_ICE_GATHER_TIMEOUT_MS)
+    await new Promise<void>((resolve) => {
+      if (localPc!.iceGatheringState === "complete") {
+        resolve();
+        return;
+      }
+      const check = () => {
+        if (localPc?.iceGatheringState === "complete") {
+          localPc.removeEventListener("icegatheringstatechange", check);
+          resolve();
+        }
+      };
+      localPc!.addEventListener("icegatheringstatechange", check);
+      setTimeout(resolve, LAN_ICE_GATHER_TIMEOUT_MS);
+    });
+    checkAborted(signal);
+
+    // SDP offer — send as-is. The previous mungeForLowLatency() injected
+    // a=x-google-flag:conference which pins Chrome to a minimum jitter
+    // buffer. That flag is designed for multi-party conferences on reliable
+    // networks, not one-way WHEP streaming over WiFi. On WiFi with any
+    // jitter or reordering, the minimum buffer causes decoder stalls that
+    // appear as video freezes after a few seconds. mediamtx's own test
+    // page (no SDP munge) streams indefinitely. Removed per web research
+    // (selkies-project, mediamtx#1697, webrtc-discuss jitter buffer).
+    const offerSdp = localPc.localDescription!.sdp;
+
+    // Send offer to WHEP endpoint (fetch supports AbortSignal natively)
+    const response = await fetch(whepUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/sdp" },
+      body: offerSdp,
+      signal,
+    });
+
+    if (!response.ok) {
+      const msg = response.status === 404
+        ? "No video stream on agent (mediamtx 404, video pipeline not running)"
+        : `WHEP request failed: ${response.status} ${response.statusText}`;
+      throw new Error(msg);
+    }
+
+    const answerSdp = await abortable(response.text(), signal);
+    checkAborted(signal);
+
+    // Set ontrack BEFORE setRemoteDescription to avoid race condition
+    // (track events can fire during or immediately after setRemoteDescription)
+    const trackPromise = new Promise<MediaStream>((resolve, reject) => {
+      const timeout = setTimeout(
+        () => reject(new Error(`No video track received within ${LAN_ONTRACK_TIMEOUT_MS / 1000}s`)),
+        LAN_ONTRACK_TIMEOUT_MS,
+      );
+      localPc!.ontrack = (event) => {
+        if (event.streams[0]) {
+          clearTimeout(timeout);
+          resolve(event.streams[0]);
+        }
+      };
+    });
+
+    await abortable(localPc.setRemoteDescription({ type: "answer", sdp: answerSdp }), signal);
+    const stream = await abortable(trackPromise, signal);
+    checkAborted(signal);
+
+    store.setStreamUrl(whepUrl);
+    store.setStreaming(true);
+    // Classify and publish the active transport so the UI can show
+    // "LAN DIRECT" / "CLOUD WHEP" badges.
+    store.setTransport(transport);
+    // Report success with connection establishment time (NOT live RTT,
+    // which is tracked separately).
+    reportHealth(transport, {
+      state: "ok",
+      stage: "connected",
+      connectMs: Date.now() - startedAt,
+    });
+
+    // Start stats polling
+    startStatsPolling();
+
+    return stream;
+  } catch (err) {
+    // Tear down the local pc on any failure. Only clear the global if we're
+    // still the active pc (a parallel call may have already replaced us).
+    if (localPc) {
+      closePeerConnection(localPc);
+      if (localPc === pc) pc = null;
+    }
+    const { code, message } = classifyError(err);
+    reportHealth(transport, { state: "failed", code, error: message });
+    throw err;
+  }
+}
+
+/**
+ * Start a WebRTC stream via MQTT-relayed SDP signaling.
+ *
+ * Used when the browser cannot reach the agent's local WHEP endpoint
+ * directly (cross-network case — cellular phone, different LAN). The SDP
+ * offer is published to `ados/{deviceId}/webrtc/offer`; the agent's
+ * WebrtcSignalingRelay forwards it to local mediamtx and publishes the
+ * answer to `ados/{deviceId}/webrtc/answer`. Media flows direct
+ * peer-to-peer via STUN-punched ICE candidates after the handshake.
+ *
+ * @param deviceId — Cloud device ID of the paired agent.
+ * @returns The MediaStream to attach to a <video> element.
+ */
+export async function startStreamViaMqttSignaling(
+  deviceId: string,
+  signal?: AbortSignal,
+): Promise<MediaStream> {
+  const store = useVideoStore.getState();
+  const startedAt = Date.now();
+
+  // Report testing state immediately so the UX dropdown shows the live
+  // attempt.
+  reportHealth("p2p-mqtt", { state: "testing", stage: "starting" });
+
+  // Clean up any stale connection before starting fresh.
+  if (pc) {
+    closePeerConnection(pc);
+    pc = null;
+    stopStatsPolling();
+  }
+
+  // mqtt.js client lives outside the inner Promise so the outer try/finally
+  // guarantees cleanup on every code path (success, timeout, error).
+  type MqttClient = {
+    on: (event: string, cb: (...args: unknown[]) => void) => void;
+    subscribe: (topic: string, cb?: (err: Error | null) => void) => void;
+    publish: (topic: string, payload: string | Buffer, opts?: { qos?: 0 | 1 | 2 }) => void;
+    end: (force?: boolean) => void;
+  };
+  let mqttClient: MqttClient | null = null;
+
+  // Part I P0-5: hold a local pc reference for the handlers' closure.
+  let localPc: RTCPeerConnection | null = null;
+
+  try {
+    checkAborted(signal);
+
+    const newPc = new RTCPeerConnection({
+      iceServers: CROSS_NETWORK_ICE_SERVERS,
+      iceTransportPolicy: "all",
+    });
+    localPc = newPc;
+    pc = newPc;
+
+    // ICE restart on transient disconnect. Closure captures newPc (const),
+    // so even if pc has been replaced by a parallel call, this handler
+    // still acts on its own connection (and bails via the newPc !== pc
+    // check).
+    newPc.onconnectionstatechange = () => {
+      if (newPc !== pc) return; // a newer pc has taken over
+      const state = newPc.connectionState;
+      if (state === "disconnected") {
+        console.warn("[webrtc-client] P2P MQTT disconnected — attempting ICE restart");
+        tryIceRestart(newPc);
+      } else if (state === "failed" || state === "closed") {
+        console.warn("[webrtc-client] P2P MQTT terminal state:", state);
+        const s = useVideoStore.getState();
+        s.setStreaming(false);
+        s.updateStats(0, 0);
+        stopStatsPolling();
+        reportHealth("p2p-mqtt", {
+          state: "failed",
+          stage: "connected",
+          code: "ice-disconnect",
+          error: `Connection ${state}`,
+        });
+      }
+    };
+
+    localPc.addTransceiver("video", { direction: "recvonly" });
+    localPc.addTransceiver("audio", { direction: "recvonly" });
+
+    const offer = await abortable(localPc.createOffer(), signal);
+    checkAborted(signal);
+    await abortable(localPc.setLocalDescription(offer), signal);
+    checkAborted(signal);
+
+    // === Stage: ICE gathering ===
+    reportHealth("p2p-mqtt", { state: "testing", stage: "ice-gathering" });
+    await new Promise<void>((resolve) => {
+      if (localPc!.iceGatheringState === "complete") { resolve(); return; }
+      const check = () => {
+        if (localPc?.iceGatheringState === "complete") {
+          localPc.removeEventListener("icegatheringstatechange", check);
+          resolve();
+        }
+      };
+      localPc!.addEventListener("icegatheringstatechange", check);
+      // 8s ceiling. Slow cellular needs more time.
+      setTimeout(resolve, ICE_GATHER_TIMEOUT_MS);
+    });
+    checkAborted(signal);
+
+    // === Stage: SDP exchange via MQTT ===
+    reportHealth("p2p-mqtt", { state: "testing", stage: "sdp-exchange" });
+    const mqttModule = await import("mqtt");
+    checkAborted(signal);
+    const connectFn = mqttModule.connect
+      ?? (mqttModule.default as { connect?: typeof mqttModule.connect })?.connect
+      ?? mqttModule.default;
+    if (typeof connectFn !== "function") {
+      throw new Error("mqtt.connect not found in module");
+    }
+
+    const topicOffer = `ados/${deviceId}/webrtc/offer`;
+    const topicAnswer = `ados/${deviceId}/webrtc/answer`;
+
+    mqttClient = (connectFn as typeof mqttModule.connect)(
+      MQTT_SIGNALING_WS_URL,
+      { protocolVersion: 5, clean: true, reconnectPeriod: 0 },
+    ) as unknown as MqttClient;
+
+    // Wait for broker connect (separate timeout from answer wait so we can
+    // distinguish "broker unreachable" from "agent unreachable").
+    await abortable(
+      new Promise<void>((resolve, reject) => {
+        const t = setTimeout(
+          () => reject(new Error("MQTT broker connect timeout")),
+          MQTT_CONNECT_TIMEOUT_MS,
+        );
+        mqttClient!.on("connect", () => { clearTimeout(t); resolve(); });
+        mqttClient!.on("error", (err: unknown) => {
+          clearTimeout(t);
+          reject(err instanceof Error ? err : new Error(String(err)));
+        });
+      }),
+      signal,
+    );
+    checkAborted(signal);
+
+    // Subscribe + publish + wait for answer (single composite timeout).
+    const answerSdp = await abortable(
+      new Promise<string>((resolve, reject) => {
+        const timer = setTimeout(
+          () => reject(new Error(`MQTT signaling timeout — no answer within ${MQTT_ANSWER_TIMEOUT_MS / 1000}s`)),
+          MQTT_ANSWER_TIMEOUT_MS,
+        );
+
+        mqttClient!.on("error", (err: unknown) => {
+          clearTimeout(timer);
+          reject(err instanceof Error ? err : new Error(String(err)));
+        });
+
+        mqttClient!.on("message", (topic: unknown, payload: unknown) => {
+          if (topic !== topicAnswer) return;
+          clearTimeout(timer);
+          const raw = (payload as Buffer).toString("utf-8");
+
+          // Agent publishes JSON error when mediamtx WHEP fails (e.g. no
+          // active video stream). SDP always starts with "v=0"; JSON error
+          // starts with "{". Fail fast with a descriptive message instead
+          // of passing garbage to setRemoteDescription.
+          if (raw.startsWith("{")) {
+            try {
+              const errPayload = JSON.parse(raw) as { error?: string; status?: number };
+              if (errPayload.error) {
+                const status = errPayload.status ?? 0;
+                const msg = status === 404
+                  ? "Agent video pipeline not running (no stream published to mediamtx)"
+                  : `Agent WHEP relay error: ${errPayload.error} (status ${status})`;
+                reject(new Error(msg));
+                return;
+              }
+            } catch {
+              // Not valid JSON, fall through to treat as SDP
+            }
+          }
+
+          resolve(raw);
+        });
+
+        mqttClient!.subscribe(topicAnswer, (err: Error | null) => {
+          if (err) {
+            clearTimeout(timer);
+            reject(new Error(`MQTT subscribe failed: ${err.message}`));
+            return;
+          }
+          // Subscribed → publish offer (with low-latency SDP hint)
+          const offerSdp = localPc!.localDescription!.sdp;
+          mqttClient!.publish(topicOffer, offerSdp, { qos: 1 });
+        });
+      }),
+      signal,
+    );
+    checkAborted(signal);
+
+    // === Stage: ontrack wait ===
+    reportHealth("p2p-mqtt", { state: "testing", stage: "ontrack-wait" });
+    const trackPromise = new Promise<MediaStream>((resolve, reject) => {
+      const timeout = setTimeout(
+        () => reject(new Error(`No video track received within ${ONTRACK_TIMEOUT_MS / 1000} seconds`)),
+        ONTRACK_TIMEOUT_MS,
+      );
+      localPc!.ontrack = (event) => {
+        if (event.streams[0]) {
+          clearTimeout(timeout);
+          resolve(event.streams[0]);
+        }
+      };
+    });
+
+    await abortable(localPc.setRemoteDescription({ type: "answer", sdp: answerSdp }), signal);
+    const stream = await abortable(trackPromise, signal);
+    checkAborted(signal);
+
+    // === Stage: connected ===
+    const elapsedMs = Date.now() - startedAt;
+    store.setStreamUrl(`mqtt://${deviceId}/webrtc`);
+    store.setStreaming(true);
+    store.setTransport("p2p-mqtt");
+    // Part I P1-11: report connection establishment time, NOT live RTT.
+    reportHealth("p2p-mqtt", { state: "ok", stage: "connected", connectMs: elapsedMs });
+    startStatsPolling();
+
+    return stream;
+  } catch (err) {
+    // Tear down the local pc on any failure. Only clear the global if we're
+    // still the active pc.
+    if (localPc) {
+      closePeerConnection(localPc);
+      if (localPc === pc) pc = null;
+    }
+    const { code, message } = classifyError(err);
+    reportHealth("p2p-mqtt", { state: "failed", code, error: message });
+    throw err;
+  } finally {
+    // Guaranteed mqtt.js client cleanup. Earlier the
+    // .end(true) call lived inside the inner Promise handlers — if any
+    // unrelated error path threw before reaching them, the broker
+    // connection leaked.
+    if (mqttClient) {
+      try { mqttClient.end(true); } catch { /* noop */ }
+    }
+  }
+}
+
+/** Stop the active WebRTC stream. */
+export async function stopStream(): Promise<void> {
+  const store = useVideoStore.getState();
+
+  if (mediaRecorder?.state === "recording") {
+    stopRecording();
+  }
+
+  stopStatsPolling();
+
+  if (pc) {
+    // closePeerConnection nulls handlers, stops every receiver+sender
+    // track (Safari camera-stuck fix), then closes the connection.
+    closePeerConnection(pc);
+    pc = null;
+  }
+
+  // Reset ICE restart cooldown so the next session can restart immediately
+  // instead of being gated by the previous session's 5s cooldown.
+  lastIceRestartAt = 0;
+
+  store.setStreaming(false);
+  store.setStreamUrl(null);
+  store.updateStats(0, 0);
+  store.setTransport("unknown");
+  store.setVideoMetrics({ codec: "", bitrateKbps: 0, packetsLost: 0, jitterMs: 0 });
+}
+
+/** Bind a video element for screenshot/recording reference. */
+export function setVideoElement(el: HTMLVideoElement | null): void {
+  videoElement = el;
+
+  if (el) {
+    // Track resolution changes
+    el.addEventListener("loadedmetadata", () => {
+      useVideoStore
+        .getState()
+        .setResolution(`${el.videoWidth}x${el.videoHeight}`);
+    });
+  }
+}
+
+/** Start recording the video stream to a local WebM file. */
+export function startRecording(): void {
+  if (!videoElement?.srcObject) {
+    throw new Error("No active stream to record");
+  }
+
+  const store = useVideoStore.getState();
+  recordedChunks = [];
+
+  const stream = videoElement.srcObject as MediaStream;
+  mediaRecorder = new MediaRecorder(stream, {
+    mimeType: "video/webm;codecs=vp8,opus",
+  });
+
+  mediaRecorder.ondataavailable = (e) => {
+    if (e.data.size > 0) recordedChunks.push(e.data);
+  };
+
+  mediaRecorder.start(1000); // 1-second chunks
+  store.setRecording(true);
+}
+
+/** Stop recording and download the file. */
+export function stopRecording(): Blob | null {
+  const store = useVideoStore.getState();
+
+  if (!mediaRecorder || mediaRecorder.state === "inactive") {
+    store.setRecording(false);
+    return null;
+  }
+
+  mediaRecorder.stop();
+  store.setRecording(false);
+
+  const blob = new Blob(recordedChunks, { type: "video/webm" });
+  recordedChunks = [];
+  mediaRecorder = null;
+
+  // Auto-download
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `altnautica-recording-${Date.now()}.webm`;
+  a.click();
+  URL.revokeObjectURL(url);
+
+  return blob;
+}
+
+/** Capture a screenshot from the current video frame. */
+export function captureScreenshot(): string | null {
+  if (!videoElement || videoElement.readyState < 2) return null;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = videoElement.videoWidth;
+  canvas.height = videoElement.videoHeight;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  ctx.drawImage(videoElement, 0, 0);
+  const dataUrl = canvas.toDataURL("image/png");
+
+  // Auto-download
+  const a = document.createElement("a");
+  a.href = dataUrl;
+  a.download = `altnautica-screenshot-${Date.now()}.png`;
+  a.click();
+
+  return dataUrl;
+}
+
+/** Poll WebRTC stats for FPS and latency.
+ *
+ * The previous implementation relied on `framesPerSecond` and
+ * `jitterBufferDelay` from `inbound-rtp` stats. `framesPerSecond` is not
+ * populated by all browsers (Safari often omits it on first poll cycles),
+ * and `jitterBufferDelay/jitterBufferEmittedCount` measures only the
+ * decoder buffer wait — it does NOT include the network round-trip.
+ *
+ * The corrected implementation:
+ *   - Computes fps from `framesDecoded` delta over the polling interval,
+ *     so it works on every browser even when framesPerSecond is undefined.
+ *   - Pulls round-trip time from `candidate-pair.currentRoundTripTime` of
+ *     the nominated/succeeded candidate pair, which is the true L4 latency
+ *     (browser ↔ mediamtx network RTT). Adds the jitter buffer delay (L5)
+ *     on top to give glass-to-decoded total.
+ */
+function startStatsPolling(): void {
+  if (statsInterval) return;
+
+  // Reset polling state in the HMR-safe Zustand store
+  useVideoStore.getState().resetPollState();
+  useVideoStore.getState().setPollState({ lastFrameTime: Date.now() });
+
+  statsInterval = setInterval(async () => {
+    if (!pc) return;
+
+    const stats = await pc.getStats();
+    const store = useVideoStore.getState();
+    // Read persistent polling state from store
+    const ps = store._pollState;
+    const lastFramesDecoded = ps.lastFramesDecoded;
+    const lastStatsTime = ps.lastStatsTime;
+    const lastBytesReceived = ps.lastBytesReceived;
+    const lastJitterDelay = ps.lastJitterDelay;
+    const lastJitterEmitted = ps.lastJitterEmitted;
+
+    // Single pass over the stats report. Collect codec entries by id while
+    // also processing inbound-rtp and candidate-pair entries. Codec name is
+    // resolved after the loop so we don't depend on iteration order.
+    type CodecStatsLite = { id: string; type: string; mimeType?: string };
+    const codecReports = new Map<string, CodecStatsLite>();
+
+    let computedFps = 0;
+    let inboundFound = false;
+    let jitterMs = 0;
+    let rttMs = 0;
+    let framesDecoded = 0;
+    let codecName = "";
+    let bitrateKbps = 0;
+    let packetsLost = 0;
+    let inboundJitterRtpMs = 0;
+    let bytesReceived = 0;
+    let inboundCodecId: string | undefined;
+
+    stats.forEach((report) => {
+      if (report.type === "codec") {
+        codecReports.set(report.id, report as unknown as CodecStatsLite);
+        return;
+      }
+
+      if (report.type === "inbound-rtp" && report.kind === "video") {
+        inboundFound = true;
+
+        type ExtendedInbound = RTCInboundRtpStreamStats & {
+          framesPerSecond?: number;
+          framesDecoded?: number;
+          jitterBufferDelay?: number;
+          jitterBufferEmittedCount?: number;
+          codecId?: string;
+          bytesReceived?: number;
+          packetsLost?: number;
+          jitter?: number;
+        };
+        const r = report as ExtendedInbound;
+
+        // Prefer the browser-reported framesPerSecond, fall back to derived
+        const reportedFps = r.framesPerSecond;
+        const decoded = r.framesDecoded ?? 0;
+        framesDecoded = decoded;
+        const now = Date.now();
+
+        if (reportedFps !== undefined && reportedFps > 0) {
+          computedFps = Math.round(reportedFps);
+        } else if (lastStatsTime > 0 && decoded > lastFramesDecoded) {
+          const elapsedSec = (now - lastStatsTime) / 1000;
+          if (elapsedSec > 0) {
+            computedFps = Math.round((decoded - lastFramesDecoded) / elapsedSec);
+          }
+        }
+
+        // Decoder jitter buffer (L5). Use the delta over the last polling
+        // window instead of the cumulative average. The cumulative ratio
+        // gets pinned to whatever the buffer looked like during the
+        // connection ramp-up, even if the stream is now smooth.
+        const delay = r.jitterBufferDelay ?? 0;
+        const emitted = r.jitterBufferEmittedCount ?? 0;
+        if (emitted > lastJitterEmitted && lastJitterEmitted > 0) {
+          const deltaDelay = delay - lastJitterDelay;
+          const deltaEmitted = emitted - lastJitterEmitted;
+          if (deltaEmitted > 0) {
+            jitterMs = Math.round((deltaDelay / deltaEmitted) * 1000);
+          }
+        } else if (emitted > 0 && lastJitterEmitted === 0) {
+          // First sample. Use cumulative as best available.
+          jitterMs = Math.round((delay / emitted) * 1000);
+        }
+        // Persist for next window. Local mutation only; we batch the
+        // store write at the bottom of this poll cycle.
+        ps.lastJitterDelay = delay;
+        ps.lastJitterEmitted = emitted;
+
+        // Capture codec id; resolve mimeType after the loop completes.
+        inboundCodecId = r.codecId;
+        bytesReceived = r.bytesReceived ?? 0;
+        packetsLost = r.packetsLost ?? 0;
+        // r.jitter is in seconds (per spec)
+        inboundJitterRtpMs = Math.round((r.jitter ?? 0) * 1000);
+        return;
+      }
+
+      if (
+        report.type === "candidate-pair" &&
+        (report as RTCIceCandidatePairStats).state === "succeeded" &&
+        (report as RTCIceCandidatePairStats).nominated
+      ) {
+        // Network round-trip (L4). Browser to mediamtx.
+        const rttSec = (report as RTCIceCandidatePairStats).currentRoundTripTime ?? 0;
+        rttMs = Math.round(rttSec * 1000);
+      }
+    });
+
+    // Resolve codec mimeType after the single pass so iteration order
+    // does not matter.
+    if (inboundCodecId && codecReports.has(inboundCodecId)) {
+      const codec = codecReports.get(inboundCodecId)!;
+      // mimeType looks like "video/H264" or "video/VP8"
+      const mime = codec.mimeType || "";
+      codecName = mime.includes("/") ? mime.split("/")[1] : mime;
+    }
+
+    if (inboundFound) {
+      // Total displayed latency = network RTT + jitter buffer delay
+      // (sensor capture + encoder are agent-side, not measurable from browser)
+      const totalLatencyMs = rttMs + jitterMs;
+      store.updateStats(computedFps, totalLatencyMs);
+
+      // Bitrate from byte delta over the polling interval
+      if (lastStatsTime > 0 && bytesReceived > lastBytesReceived) {
+        const elapsedSec = (Date.now() - lastStatsTime) / 1000;
+        if (elapsedSec > 0) {
+          const deltaBytes = bytesReceived - lastBytesReceived;
+          bitrateKbps = Math.round((deltaBytes * 8) / elapsedSec / 1000);
+        }
+      }
+
+      store.setVideoMetrics({
+        codec: codecName,
+        bitrateKbps,
+        packetsLost,
+        jitterMs: inboundJitterRtpMs > 0 ? inboundJitterRtpMs : jitterMs,
+      });
+
+      // Persist polling state to the Zustand store. This
+      // single setPollState call replaces all 5 module-global writes — the
+      // store is HMR-safe so the next poll cycle (even after a Turbopack
+      // reload of this module) will read the correct previous values.
+      store.setPollState({
+        lastFramesDecoded: framesDecoded,
+        lastBytesReceived: bytesReceived,
+        lastStatsTime: Date.now(),
+        lastJitterDelay: ps.lastJitterDelay,
+        lastJitterEmitted: ps.lastJitterEmitted,
+        lastFrameTime: computedFps > 0 ? Date.now() : ps.lastFrameTime,
+      });
+
+      // Previously this branch fired a "frame timeout" disconnect
+      // when computedFps stayed at 0 for >20s. The pattern was wrong:
+      //   - Module-level state (lastFramesDecoded, lastStatsTime) gets reset
+      //     by Turbopack HMR every time ANY file in the project changes
+      //   - The reset makes computedFps stuck at 0 even when frames are flowing
+      //   - The timeout fires falsely → setStreaming(false) → VideoFeedCard
+      //     auto-reconnect → new peer connection → mediamtx renegotiates →
+      //     state resets again → loop
+      // The user perceived this as "intermittent connect/disconnect".
+      //
+      // The native pc.onconnectionstatechange handler (line 44-55) ALREADY
+      // detects real disconnects (state transitions to "disconnected"/"failed"/
+      // "closed"). We don't need a custom frame-arrival timer on top of that.
+      // Removing the custom timeout. If frames stop but the WebRTC connection
+      // is still alive, the user sees a frozen frame, which is the correct
+      // behavior — the user can manually retry via the reconnect button.
+      // (lastFrameTime is now persisted via setPollState in the batched
+      // store update above.)
+    }
+  }, 1000);
+}
+
+function stopStatsPolling(): void {
+  if (statsInterval) {
+    clearInterval(statsInterval);
+    statsInterval = null;
+  }
+}
+
+/** Check if a stream is currently active. */
+export function isStreamActive(): boolean {
+  return pc !== null && pc.connectionState === "connected";
+}

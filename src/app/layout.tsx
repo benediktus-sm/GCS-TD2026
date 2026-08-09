@@ -1,0 +1,67 @@
+import type { Metadata } from "next";
+import "./globals.css";
+import { Geist } from "next/font/google";
+import { CommandShell } from "@/components/layout/CommandShell";
+import { ToastProvider } from "@/components/ui/toast";
+import { LocaleProvider } from "@/components/layout/LocaleProvider";
+import { Analytics } from "@/components/analytics/Analytics";
+import { cn } from "@/lib/utils";
+
+import ConvexClientProvider from "./ConvexClientProvider";
+import { ConvexAuthNextjsServerProvider } from "@convex-dev/auth/nextjs/server";
+
+const geistSans = Geist({
+  subsets: ["latin"],
+  variable: "--font-geist-sans",
+});
+
+// Force all pages to render dynamically (no static prerendering).
+// This app is a fully interactive GCS — every page needs client-side
+// providers (ConvexProvider, Zustand stores, etc.) that are unavailable
+// during static build. Without this, `next build` fails when
+// NEXT_PUBLIC_CONVEX_URL is not set (e.g. CI environments).
+export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "swarnakasamonitoring",
+  description: "Open-source Ground Control Station by Altnautica",
+  icons: {
+    icon: "/logo swarnakasa.png",
+    apple: "/logo swarnakasa.png",
+  },
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const content = (
+    <LocaleProvider>
+      <ToastProvider>
+        <CommandShell>{children}</CommandShell>
+      </ToastProvider>
+    </LocaleProvider>
+  );
+
+  const body = (
+    <html lang="en" className={cn("dark", geistSans.variable)}>
+      <body className="h-dvh overflow-hidden bg-bg-primary text-text-primary font-body">
+        <ConvexClientProvider>
+          {content}
+        </ConvexClientProvider>
+        <Analytics />
+      </body>
+    </html>
+  );
+
+  if (process.env.NEXT_PUBLIC_CONVEX_URL) {
+    return (
+      <ConvexAuthNextjsServerProvider>
+        {body}
+      </ConvexAuthNextjsServerProvider>
+    );
+  }
+
+  return body;
+}
