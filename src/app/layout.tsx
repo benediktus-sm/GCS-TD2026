@@ -5,6 +5,7 @@ import { CommandShell } from "@/components/layout/CommandShell";
 import { ToastProvider } from "@/components/ui/toast";
 import { LocaleProvider } from "@/components/layout/LocaleProvider";
 import { Analytics } from "@/components/analytics/Analytics";
+import { LocalLoginGate } from "@/components/auth/LocalLoginGate";
 import { cn } from "@/lib/utils";
 
 import ConvexClientProvider from "./ConvexClientProvider";
@@ -39,7 +40,9 @@ export default function RootLayout({
   const content = (
     <LocaleProvider>
       <ToastProvider>
-        <CommandShell>{children}</CommandShell>
+        <LocalLoginGate>
+          <CommandShell>{children}</CommandShell>
+        </LocalLoginGate>
       </ToastProvider>
     </LocaleProvider>
   );
