@@ -4,11 +4,6 @@
  * @description Hardcoded local login roster. Bypasses Convex entirely —
  * checked client-side only. Not cryptographically secure; this is a simple
  * access gate for a small, known set of users, not a real auth system.
- *
- * Roster and bypass key are read from NEXT_PUBLIC_* env vars (see
- * .env.local, gitignored) rather than committed to source, since this repo
- * is public — keeps the actual values out of git history. They still ship
- * inside the client JS bundle at build time, same as any client-only check.
  */
 
 export interface LocalAccount {
@@ -16,25 +11,14 @@ export interface LocalAccount {
   nim: string;
 }
 
-function parseAccounts(): LocalAccount[] {
-  const raw = process.env.NEXT_PUBLIC_LOCAL_ACCOUNTS;
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (entry): entry is LocalAccount =>
-        typeof entry?.name === "string" && typeof entry?.nim === "string"
-    );
-  } catch {
-    return [];
-  }
-}
-
-export const LOCAL_ACCOUNTS: LocalAccount[] = parseAccounts();
+export const LOCAL_ACCOUNTS: LocalAccount[] = [
+  { name: "Benediktus Satryawan Marbun", nim: "125130008" },
+  { name: "Muhammad Dharil Pradipta", nim: "124490074" },
+  { name: "Ahda Fawadhih", nim: "124130060" },
+];
 
 /** Master key that grants access without matching a specific account. */
-export const BYPASS_KEY = process.env.NEXT_PUBLIC_BYPASS_KEY ?? "";
+export const BYPASS_KEY = "IVDyQimDzlPC";
 
 function normalize(value: string): string {
   return value.trim().toLowerCase();
@@ -49,5 +33,5 @@ export function findLocalAccount(name: string, nim: string): string | null {
 }
 
 export function isBypassKey(key: string): boolean {
-  return BYPASS_KEY !== "" && key.trim() === BYPASS_KEY;
+  return key.trim() === BYPASS_KEY;
 }
