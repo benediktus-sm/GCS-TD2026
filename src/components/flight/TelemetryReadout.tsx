@@ -25,11 +25,11 @@ function batteryBarColor(pct: number): string {
 
 function FlightCell({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex flex-col items-center py-1.5">
-      <span className="text-sm font-mono font-semibold tabular-nums text-text-primary">
+   <div className="flex flex-col items-center py-9">
+      <span className="text-[25px] font-mono font-semibold tabular-nums text-text-primary">
         {value}
       </span>
-      <span className="text-[10px] text-text-tertiary mt-0.5">{label}</span>
+      <span className="text-[15px] text-green-400 mt-0.5">{label}</span>
     </div>
   );
 }
@@ -61,12 +61,23 @@ export function TelemetryReadout() {
   return (
     <div className={cn("bg-transparent transition-opacity duration-200", !isConnected && "opacity-60")}>
       {/* Primary flight metrics — 4 columns */}
-      <div className="grid grid-cols-4 divide-x divide-border-default">
-        <FlightCell label="ALT" value={altStr} />
-        <FlightCell label="SPD" value={speedStr} />
-        <FlightCell label="HDG" value={headingStr} />
-        <FlightCell label="VS" value={vsStr} />
-      </div>
+      <div className="grid grid-cols-4 gap-2">
+  <div className="rounded-lg border border-green-500 bg-bg-secondary">
+    <FlightCell label="ALT" value={altStr} />
+  </div>
+
+  <div className="rounded-lg border border-green-500 bg-bg-secondary">
+    <FlightCell label="SPD" value={speedStr} />
+  </div>
+
+  <div className="rounded-lg border border-green-500 bg-bg-secondary">
+    <FlightCell label="HDG" value={headingStr} />
+  </div>
+
+  <div className="rounded-lg border border-green-500 bg-bg-secondary">
+    <FlightCell label="VS" value={vsStr} />
+  </div>
+  </div>
 
       {/* Status bar — GPS, battery, mode, deck controls */}
       <div className="flex items-center gap-2 px-3 py-1.5 border-t border-border-default text-[10px] font-mono">
@@ -154,3 +165,4 @@ function ModeLabel({ mode }: { mode: string }) {
     </div>
   );
 }
+ 

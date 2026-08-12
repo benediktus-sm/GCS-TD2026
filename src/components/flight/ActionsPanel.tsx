@@ -153,10 +153,14 @@ export function ActionsPanel({ mode = "quick" }: ActionsPanelProps) {
               position="right"
             >
               <Button
-                variant={isArmed ? "danger" : "primary"}
-                size="sm"
-                icon={<Power size={14} />}
-                className="w-full h-9 text-sm font-semibold"
+                variant="secondary"
+  size="sm"
+  icon={<Power size={14} />}
+  className={`w-full h-9 text-sm font-semibold text-white ${
+    isArmed
+      ? "bg-green-600 hover:bg-green-700 border-green-600"
+      : "bg-red-600 hover:bg-red-700 border-red-600"
+  }`}
                 onClick={() => {
                   if (isArmed) setShowDisarmConfirm(true);
                   else setShowArmConfirm(true);
