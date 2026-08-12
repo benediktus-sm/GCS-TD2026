@@ -2,17 +2,14 @@
 
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useLocalGateStore } from "@/stores/local-gate-store";
-import { findLocalAccount, isBypassKey } from "@/lib/auth/local-accounts";
+import { findLocalAccount } from "@/lib/auth/local-accounts";
 
 export function LocalLoginGate({ children }: { children: ReactNode }) {
   const unlocked = useLocalGateStore((s) => s.unlocked);
   const unlockWithAccount = useLocalGateStore((s) => s.unlockWithAccount);
-  const unlockWithBypass = useLocalGateStore((s) => s.unlockWithBypass);
 
-  const [mode, setMode] = useState<"account" | "bypass">("account");
   const [name, setName] = useState("");
   const [nim, setNim] = useState("");
-  const [key, setKey] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   if (unlocked) return <>{children}</>;
@@ -21,20 +18,11 @@ export function LocalLoginGate({ children }: { children: ReactNode }) {
     e.preventDefault();
     setError(null);
 
-    if (mode === "account") {
-      const match = findLocalAccount(name, nim);
-      if (match) {
-        unlockWithAccount(match);
-      } else {
-        setError("Nama atau NIM tidak cocok.");
-      }
-      return;
-    }
-
-    if (isBypassKey(key)) {
-      unlockWithBypass();
+    const match = findLocalAccount(name, nim);
+    if (match) {
+      unlockWithAccount(match);
     } else {
-      setError("Kode tidak valid.");
+      setError("Nama atau NIM tidak cocok.");
     }
   };
 
@@ -55,72 +43,26 @@ export function LocalLoginGate({ children }: { children: ReactNode }) {
           </div>
         </div>
 
-        <div className="flex rounded border border-border-default overflow-hidden text-xs">
-          <button
-            type="button"
-            onClick={() => {
-              setMode("account");
-              setError(null);
-            }}
-            className={`flex-1 py-1.5 uppercase tracking-wider transition-colors ${
-              mode === "account"
-                ? "bg-accent-primary/20 text-accent-primary"
-                : "text-text-tertiary hover:text-text-secondary"
-            }`}
-          >
-            Akun
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setMode("bypass");
-              setError(null);
-            }}
-            className={`flex-1 py-1.5 uppercase tracking-wider transition-colors ${
-              mode === "bypass"
-                ? "bg-accent-primary/20 text-accent-primary"
-                : "text-text-tertiary hover:text-text-secondary"
-            }`}
-          >
-            Bypass Key
-          </button>
-        </div>
-
-        {mode === "account" ? (
-          <>
-            <label className="flex flex-col gap-1 text-xs text-text-secondary">
-              Nama
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="rounded border border-border-default bg-bg-primary px-2 py-1.5 text-text-primary text-sm outline-none focus:border-accent-primary"
-                autoComplete="off"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-xs text-text-secondary">
-              NIM
-              <input
-                type="text"
-                value={nim}
-                onChange={(e) => setNim(e.target.value)}
-                className="rounded border border-border-default bg-bg-primary px-2 py-1.5 text-text-primary text-sm outline-none focus:border-accent-primary"
-                autoComplete="off"
-              />
-            </label>
-          </>
-        ) : (
-          <label className="flex flex-col gap-1 text-xs text-text-secondary">
-            Kode Bypass
-            <input
-              type="password"
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-              className="rounded border border-border-default bg-bg-primary px-2 py-1.5 text-text-primary text-sm outline-none focus:border-accent-primary"
-              autoComplete="off"
-            />
-          </label>
-        )}
+        <label className="flex flex-col gap-1 text-xs text-text-secondary">
+          Nama
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="rounded border border-border-default bg-bg-primary px-2 py-1.5 text-text-primary text-sm outline-none focus:border-accent-primary"
+            autoComplete="off"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-text-secondary">
+          NIM
+          <input
+            type="text"
+            value={nim}
+            onChange={(e) => setNim(e.target.value)}
+            className="rounded border border-border-default bg-bg-primary px-2 py-1.5 text-text-primary text-sm outline-none focus:border-accent-primary"
+            autoComplete="off"
+          />
+        </label>
 
         {error && <p className="text-xs text-status-error">{error}</p>}
 

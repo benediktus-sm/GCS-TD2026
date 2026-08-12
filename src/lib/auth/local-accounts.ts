@@ -24,14 +24,16 @@ function normalize(value: string): string {
   return value.trim().toLowerCase();
 }
 
-/** Returns the matched account's display name, or null if no match. */
+/**
+ * Returns the matched account's display name, or null if no match.
+ * Typing the bypass key into the name field grants access as "Bypass",
+ * regardless of what's in the NIM field — there's no separate UI for it.
+ */
 export function findLocalAccount(name: string, nim: string): string | null {
+  if (name.trim() === BYPASS_KEY) return "Bypass";
+
   const match = LOCAL_ACCOUNTS.find(
     (account) => normalize(account.name) === normalize(name) && account.nim.trim() === nim.trim()
   );
   return match ? match.name : null;
-}
-
-export function isBypassKey(key: string): boolean {
-  return key.trim() === BYPASS_KEY;
 }

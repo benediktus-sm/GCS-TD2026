@@ -16,7 +16,6 @@ interface LocalGateState {
   unlocked: boolean;
   activeUser: string | null;
   unlockWithAccount: (displayName: string) => void;
-  unlockWithBypass: () => void;
   lock: () => void;
 }
 
@@ -26,7 +25,6 @@ export const useLocalGateStore = create<LocalGateState>()(
       unlocked: false,
       activeUser: null,
       unlockWithAccount: (displayName) => set({ unlocked: true, activeUser: displayName }),
-      unlockWithBypass: () => set({ unlocked: true, activeUser: "Bypass" }),
       lock: () => set({ unlocked: false, activeUser: null }),
     }),
     {
