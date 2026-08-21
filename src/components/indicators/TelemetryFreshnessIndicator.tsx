@@ -25,11 +25,18 @@ const FRESHNESS_COLORS = {
   fresh: "bg-status-success",
   stale: "bg-status-warning",
   lost: "bg-status-error",
-  none: "bg-bg-tertiary",
+  none: "bg-text-tertiary/40",
+} as const;
+
+const FRESHNESS_BG = {
+  fresh: "border-status-success/30 bg-status-success/10 text-status-success",
+  stale: "border-status-warning/30 bg-status-warning/10 text-status-warning",
+  lost: "border-status-error/30 bg-status-error/10 text-status-error",
+  none: "border-border-default bg-bg-tertiary/40 text-text-tertiary",
 } as const;
 
 /**
- * Row of per-channel freshness dots for key telemetry channels.
+ * Row of per-channel status button chips for key telemetry channels.
  * Green = receiving data, yellow = stale, red = lost, gray = never received.
  */
 export function TelemetryFreshnessIndicator({ className }: { className?: string }) {
@@ -44,19 +51,26 @@ export function TelemetryFreshnessIndicator({ className }: { className?: string 
   } as const;
 
   return (
-    <div className={cn("flex items-center gap-1", className)}>
+    <div className={cn("grid grid-cols-6 gap-1 w-full", className)}>
       {DISPLAY_CHANNELS.map(({ key, labelKey, short }) => {
         const freshness = getFreshness(key);
         const label = t(labelKey);
         return (
           <Tooltip key={key} content={`${label}: ${freshnessLabel[freshness]}`}>
-            <div className="flex flex-col items-center gap-0.5">
-              <div className={cn("w-1.5 h-1.5 rounded-full transition-colors", FRESHNESS_COLORS[freshness])} />
-              <span className="text-[7px] font-mono text-text-tertiary leading-none">{short}</span>
-            </div>
+            <button
+              type="button"
+              className={cn(
+                "h-6 px-1 rounded flex items-center justify-center gap-1 border text-[10px] font-mono font-semibold transition-colors cursor-pointer select-none",
+                FRESHNESS_BG[freshness]
+              )}
+            >
+              <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", FRESHNESS_COLORS[freshness])} />
+              <span className="leading-none font-bold">{short}</span>
+            </button>
           </Tooltip>
         );
       })}
     </div>
   );
 }
+

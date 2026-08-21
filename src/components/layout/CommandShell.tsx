@@ -178,31 +178,31 @@ function CommandShellInner({ children }: { children: React.ReactNode }) {
 
       {/* Top bar */}
       {!immersiveMode && <header className={cn(
-        "h-12 flex items-center justify-between px-4 bg-bg-secondary border border-border-default shrink-0 mx-2 mt-2 rounded-2xl shadow-lg",
+        "h-11 flex items-center justify-between px-3.5 bg-bg-secondary border-b border-border-default shrink-0",
         isElectron && isMac && "pl-[76px]",
         isElectron && isWindows && "pr-[140px]",
         isElectron && !isLinux && "[-webkit-app-region:drag]"
       )}>
         {/* Left — Wordmark */}
-        <div className={cn("flex items-center gap-2", isElectron && !isLinux && "[-webkit-app-region:no-drag]")}>
-          <img src="/logo swarnakasa.png" alt="Logo" className="h-6 w-auto" />
+        <div className={cn("flex items-center gap-2.5", isElectron && !isLinux && "[-webkit-app-region:no-drag]")}>
+          <img src="/logo swarnakasa.png" alt="Logo" className="h-5 w-auto" />
           <div className="flex items-baseline gap-1.5">
-            <span className="font-display uppercase tracking-[0.25em] text-sm font-semibold text-accent-primary">
+            <span className="font-mono tracking-widest text-xs font-bold text-accent-primary uppercase">
               SWARNAKASA
             </span>
-            <span className="text-[10px] uppercase tracking-widest text-text-tertiary font-medium">
-              UAV MONITORING
+            <span className="text-[9px] uppercase tracking-widest text-text-tertiary font-mono">
+              GCS
             </span>
           </div>
           {demo && (
             <Tooltip content={t("exitDemo")} position="bottom">
               <button
                 onClick={() => setDemoMode(false)}
-                className="flex items-center gap-2 px-3 py-1 bg-yellow-400/10 border border-yellow-400/30 text-yellow-400 rounded-full text-[10px] font-bold tracking-wider uppercase transition-all hover:bg-yellow-400/20 hover:border-yellow-400/50 shadow-[0_0_15px_rgba(250,204,21,0.1)]"
+                className="flex items-center gap-1.5 px-2 py-0.5 bg-status-warning/10 border border-status-warning/40 text-status-warning rounded text-[9px] font-mono font-bold tracking-wider uppercase transition-colors hover:bg-status-warning/20"
               >
-                <div className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
+                <div className="w-1.5 h-1.5 rounded-full bg-status-warning" />
                 {t("demo")}
-                <X size={10} className="ml-0.5 opacity-60 group-hover:opacity-100" />
+                <X size={10} className="ml-0.5 opacity-60 hover:opacity-100" />
               </button>
             </Tooltip>
           )}
@@ -214,7 +214,7 @@ function CommandShellInner({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* Right — Status indicators */}
-        <div className={cn("flex items-center gap-3", isElectron && !isLinux && "[-webkit-app-region:no-drag]")}>
+        <div className={cn("flex items-center gap-2.5", isElectron && !isLinux && "[-webkit-app-region:no-drag]")}>
           {/* Main Navbar Connect Drone Button */}
           <Tooltip
             content={
@@ -227,18 +227,18 @@ function CommandShellInner({ children }: { children: React.ReactNode }) {
             <button
               onClick={openConnectDialog}
               className={cn(
-                "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-all border shadow-sm cursor-pointer",
+                "flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-mono transition-colors border cursor-pointer",
                 droneCount > 0
-                  ? "bg-accent-primary/10 border-accent-primary/40 text-accent-primary hover:bg-accent-primary/20"
-                  : "bg-bg-tertiary border-border-default text-text-secondary hover:text-text-primary hover:border-accent-primary/50"
+                  ? "bg-status-success/10 border-status-success/40 text-status-success hover:bg-status-success/20 font-semibold"
+                  : "bg-bg-tertiary border-border-default text-text-secondary hover:text-text-primary hover:border-border-strong"
               )}
             >
-              <Wifi size={13} className={droneCount > 0 ? "animate-pulse text-accent-primary" : ""} />
+              <Wifi size={12} className={droneCount > 0 ? "text-status-success" : "text-text-tertiary"} />
               <span className="hidden sm:inline font-medium">
-                {droneCount > 0 ? "Connected" : "Connect Drone"}
+                {droneCount > 0 ? "CONNECTED" : "CONNECT"}
               </span>
               {droneCount > 0 && (
-                <span className="w-4 h-4 rounded-full bg-accent-primary text-bg-primary text-[10px] font-bold flex items-center justify-center">
+                <span className="px-1 py-0.2 rounded bg-status-success text-bg-primary text-[9px] font-mono font-bold">
                   {droneCount}
                 </span>
               )}

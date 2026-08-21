@@ -55,27 +55,42 @@ export function drawSkyGround(
 }
 
 export function drawCrosshair(ctx: CanvasRenderingContext2D, cx: number, cy: number) {
-  const arm = 20;
-  const gap = 6;
-  ctx.lineWidth = 1.5;
-  ctx.strokeStyle = HUD_GREEN;
+  // Authentic Glass Cockpit Aircraft Reference Symbol (Boeing/Garmin wingbars + center pipper)
+  const wingW = 28;
+  const wingH = 6;
+  const gap = 12;
+  const symbolColor = "#f59e0b"; // Aviation Amber / Gold
+
+  ctx.save();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = symbolColor;
+  ctx.fillStyle = symbolColor;
   ctx.shadowColor = SHADOW;
-  ctx.shadowBlur = 2;
+  ctx.shadowBlur = 3;
   ctx.shadowOffsetX = 1;
   ctx.shadowOffsetY = 1;
 
+  // Left wing bar
   ctx.beginPath();
-  ctx.moveTo(cx - arm, cy); ctx.lineTo(cx - gap, cy);
-  ctx.moveTo(cx + gap, cy); ctx.lineTo(cx + arm, cy);
-  ctx.moveTo(cx, cy - arm); ctx.lineTo(cx, cy - gap);
-  ctx.moveTo(cx, cy + gap); ctx.lineTo(cx, cy + arm);
+  ctx.moveTo(cx - gap - wingW, cy);
+  ctx.lineTo(cx - gap, cy);
+  ctx.lineTo(cx - gap, cy + wingH);
   ctx.stroke();
 
-  ctx.fillStyle = HUD_GREEN;
+  // Right wing bar
   ctx.beginPath();
-  ctx.arc(cx, cy, 2, 0, Math.PI * 2);
+  ctx.moveTo(cx + gap + wingW, cy);
+  ctx.lineTo(cx + gap, cy);
+  ctx.lineTo(cx + gap, cy + wingH);
+  ctx.stroke();
+
+  // Center aircraft pipper dot
+  ctx.beginPath();
+  ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
   ctx.fill();
+
   clearShadow(ctx);
+  ctx.restore();
 }
 
 export function drawPitchLadder(

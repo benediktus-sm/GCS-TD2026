@@ -23,13 +23,20 @@ function batteryBarColor(pct: number): string {
   return "bg-status-success";
 }
 
-function FlightCell({ label, value }: { label: string; value: string }) {
+function FlightCell({ label, value, unit }: { label: string; value: string; unit: string }) {
   return (
-   <div className="flex flex-col items-center py-9">
-      <span className="text-[25px] font-mono font-semibold tabular-nums text-text-primary">
+    <div className="flex flex-col items-center py-2.5 px-1 bg-bg-secondary/90 hover:bg-bg-tertiary/60 transition-colors">
+      <div className="flex items-center gap-1">
+        <span className="text-[9px] font-mono font-bold tracking-widest text-text-tertiary uppercase">
+          {label}
+        </span>
+        <span className="text-[8px] font-mono text-text-tertiary/70 uppercase">
+          {unit}
+        </span>
+      </div>
+      <span className="text-base font-mono font-bold tabular-nums text-text-primary mt-0.5 tracking-tight">
         {value}
       </span>
-      <span className="text-[15px] text-green-400 mt-0.5">{label}</span>
     </div>
   );
 }
@@ -50,55 +57,51 @@ export function TelemetryReadout() {
   const heading = normalizeHeading(pos?.heading ?? vfr?.heading ?? 0);
   const vs = vfr?.climb ?? pos?.climbRate ?? 0;
   const batteryPct = bat?.remaining ?? 0;
+  const voltage = bat?.voltage ?? 0;
+  const current = bat?.current ?? 0;
   const satellites = gps?.satellites ?? 0;
   const fixType = gps?.fixType ?? 0;
 
-  const altStr = isConnected ? `${alt.toFixed(1)}m` : "-- m";
-  const speedStr = isConnected ? speedKph.toFixed(1) : "--";
-  const headingStr = isConnected ? `${String(Math.round(heading)).padStart(3, "0")}\u00B0` : "--\u00B0";
-  const vsStr = isConnected ? vs.toFixed(1) : "--";
+  const altStr = isConnected ? `${alt.toFixed(1)}` : "--.-";
+  const speedStr = isConnected ? `${speedKph.toFixed(1)}` : "--.-";
+  const headingStr = isConnected ? `${String(Math.round(heading)).padStart(3, "0")}\u00B0` : "---\u00B0";
+  const vsStr = isConnected ? `${vs >= 0 ? "+" : ""}${vs.toFixed(1)}` : "--.-";
 
   return (
-    <div className={cn("bg-transparent transition-opacity duration-200", !isConnected && "opacity-60")}>
-      {/* Primary flight metrics — 4 columns */}
-      <div className="grid grid-cols-4 gap-2">
-  <div className="rounded-lg border border-green-500 bg-bg-secondary">
-    <FlightCell label="ALT" value={altStr} />
-  </div>
+    <div className={cn("bg-bg-primary transition-opacity duration-200 border-b border-border-default", !isConnected && "opacity-60")}>
+      {/* Primary flight metrics — 4-column avionics tape */}
+      <div className="grid grid-cols-4 divide-x divide-border-default border-b border-border-default">
+        <FlightCell label="ALT" value={altStr} unit="m" />
+        <FlightCell label="SPD" value={speedStr} unit="km/h" />
+        <FlightCell label="HDG" value={headingStr} unit="mag" />
+        <FlightCell label="V/S" value={vsStr} unit="m/s" />
+      </div>
 
-  <div className="rounded-lg border border-green-500 bg-bg-secondary">
-    <FlightCell label="SPD" value={speedStr} />
-  </div>
-
-  <div className="rounded-lg border border-green-500 bg-bg-secondary">
-    <FlightCell label="HDG" value={headingStr} />
-  </div>
-
-  <div className="rounded-lg border border-green-500 bg-bg-secondary">
-    <FlightCell label="VS" value={vsStr} />
-  </div>
-  </div>
-
-      {/* Status bar — GPS, battery, mode, deck controls */}
-      <div className="flex items-center gap-2 px-3 py-1.5 border-t border-border-default text-[10px] font-mono">
-        {/* GPS */}
-        <div className="flex items-center gap-1">
-          <span className={cn("inline-block w-1.5 h-1.5 rounded-full", isConnected && fixType >= 3 ? "bg-status-success" : isConnected && fixType === 2 ? "bg-status-warning" : "bg-status-error")} />
-          <span className={cn("tabular-nums", isConnected ? gpsFixColor(fixType) : "text-text-tertiary")}>
-            {isConnected ? satellites : "--"}
+      {/* Secondary Avionics Status bar — GPS, battery voltage/current, mode, deck controls */}
+      <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-bg-secondary/60 text-[10px] font-mono">
+        {/* GPS Fix + Satellites */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span className={cn("inline-block w-2 h-2 rounded-full", isConnected && fixType >= 3 ? "bg-status-success shadow-[0_0_6px_rgba(16,185,129,0.8)]" : isConnected && fixType === 2 ? "bg-status-warning" : "bg-status-error")} />
+          <span className={cn("font-bold tabular-nums", isConnected ? gpsFixColor(fixType) : "text-text-tertiary")}>
+            {isConnected ? (fixType >= 3 ? "3D FIX" : fixType === 2 ? "2D FIX" : "NO FIX") : "OFFLINE"}
           </span>
-          <span className="text-text-tertiary">SAT</span>
+          <span className="text-text-tertiary">({isConnected ? satellites : 0} SAT)</span>
         </div>
 
-        {/* Battery bar inline */}
-        <div className="flex items-center gap-1.5 flex-1 min-w-0">
-          <div className="flex-1 h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
+        {/* Battery Power & Level */}
+        <div className="flex items-center gap-2 flex-1 justify-center min-w-0 px-2">
+          {voltage > 0 && (
+            <span className="text-text-secondary tabular-nums font-medium hidden sm:inline">
+              {voltage.toFixed(1)}V
+            </span>
+          )}
+          <div className="flex-1 max-w-[90px] h-1.5 bg-bg-tertiary rounded-full overflow-hidden border border-border-default">
             <div
-              className={cn("h-full rounded-full transition-all", isConnected ? batteryBarColor(batteryPct) : "bg-text-tertiary")}
+              className={cn("h-full transition-all", isConnected ? batteryBarColor(batteryPct) : "bg-text-tertiary")}
               style={{ width: `${isConnected ? Math.max(batteryPct, 2) : 0}%` }}
             />
           </div>
-          <span className={cn("tabular-nums", !isConnected ? "text-text-tertiary" : batteryPct <= 25 ? "text-status-error" : batteryPct <= 50 ? "text-status-warning" : "text-text-secondary")}>
+          <span className={cn("tabular-nums font-bold", !isConnected ? "text-text-tertiary" : batteryPct <= 25 ? "text-status-error" : batteryPct <= 50 ? "text-status-warning" : "text-status-success")}>
             {isConnected ? `${Math.round(batteryPct)}%` : "--%"}
           </span>
         </div>
