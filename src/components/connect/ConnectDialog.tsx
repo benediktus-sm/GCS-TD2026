@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { SerialPanel } from "@/components/connect/SerialPanel";
 import { WebSocketPanel } from "@/components/connect/WebSocketPanel";
 import { BluetoothPanel } from "@/components/connect/BluetoothPanel";
+import { MqttPanel } from "@/components/connect/MqttPanel";
 import { BluetoothTransport } from "@/lib/protocol/transport/ble";
 import { ActiveConnections } from "@/components/connect/ActiveConnections";
 import { ConnectionPresets } from "@/components/connect/ConnectionPresets";
@@ -37,6 +38,7 @@ export function ConnectDialog() {
   const CONNECTION_TABS = [
     { id: "serial", label: t("usbSerial") },
     { id: "websocket", label: t("webSocket") },
+    { id: "mqtt", label: "MQTT (VPS)" },
     ...(BluetoothTransport.isSupported() ? [{ id: "bluetooth", label: "Bluetooth" }] : []),
   ];
 
@@ -45,6 +47,7 @@ export function ConnectDialog() {
   const [dfuDetected, setDfuDetected] = useState(false);
   const [serialBaudRate, setSerialBaudRate] = useState(115200);
   const [websocketUrl, setWebsocketUrl] = useState("ws://localhost:14550");
+  const [mqttBrokerUrl, setMqttBrokerUrl] = useState("wss://mqtt.altnautica.com/mqtt");
   const [connectMode, setConnectMode] = useState<"new" | "link">("new");
   const [selectedTargetDroneId, setSelectedTargetDroneId] = useState<string | null>(null);
   const drones = useDroneManager((s) => s.drones);
@@ -92,9 +95,9 @@ export function ConnectDialog() {
   }, [open]);
 
   const handleConnected = useCallback(
-    (name: string, type: "serial" | "websocket", detail: string | number) => {
+    (name: string, type: "serial" | "websocket" | "mqtt-mavlink", detail: string | number) => {
       void saveRecentConnection({
-        type,
+        type: type === "mqtt-mavlink" ? "websocket" : type,
         name,
         date: Date.now(),
         ...(type === "serial"
@@ -113,6 +116,10 @@ export function ConnectDialog() {
     handleConnected(name, "websocket", url);
   }
 
+  function handleMqttConnected(name: string, _type: "mqtt-mavlink", url: string) {
+    handleConnected(name, "mqtt-mavlink", url);
+  }
+
   async function handleSavePreset() {
     const presetName = prompt("Preset name:");
     if (!presetName) return;
@@ -120,10 +127,12 @@ export function ConnectDialog() {
     const preset: ConnectionPreset = {
       id: randomId(),
       name: presetName,
-      type: tab as "serial" | "websocket",
+      type: (tab === "mqtt" ? "websocket" : tab) as "serial" | "websocket",
       config:
         tab === "serial"
           ? { baudRate: serialBaudRate }
+          : tab === "mqtt"
+          ? { url: mqttBrokerUrl }
           : { url: websocketUrl },
       createdAt: Date.now(),
     };
@@ -137,7 +146,12 @@ export function ConnectDialog() {
       setSerialBaudRate(preset.config.baudRate);
     }
     if (preset.type === "websocket" && preset.config.url) {
-      setWebsocketUrl(preset.config.url);
+      if (preset.config.url.startsWith("mqtt") || preset.config.url.includes("mqtt")) {
+        setTab("mqtt");
+        setMqttBrokerUrl(preset.config.url);
+      } else {
+        setWebsocketUrl(preset.config.url);
+      }
     }
   }
 
@@ -269,6 +283,13 @@ export function ConnectDialog() {
                 onConnected={handleWsConnected}
                 url={websocketUrl}
                 onUrlChange={setWebsocketUrl}
+                targetDroneId={connectMode === "link" ? selectedTargetDroneId : null}
+              />
+            ) : tab === "mqtt" ? (
+              <MqttPanel
+                onConnected={handleMqttConnected}
+                brokerUrl={mqttBrokerUrl}
+                onBrokerUrlChange={setMqttBrokerUrl}
                 targetDroneId={connectMode === "link" ? selectedTargetDroneId : null}
               />
             ) : tab === "bluetooth" ? (

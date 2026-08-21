@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Settings, AlertTriangle, LogOut, CloudOff, Minimize2, X, Star, BookOpen } from "lucide-react";
+import { Settings, AlertTriangle, LogOut, CloudOff, Minimize2, X, Star, BookOpen, Wifi } from "lucide-react";
 import { Tooltip } from "@/components/ui/tooltip";
 import { CommandNav } from "./CommandNav";
 import { DemoProvider } from "./DemoProvider";
@@ -11,6 +11,8 @@ import { CommandPalette } from "@/components/shared/command-palette";
 import { FailsafeAlertBanner } from "@/components/flight/FailsafeAlertBanner";
 import { PluginCrashBanner } from "@/components/plugins/PluginCrashBanner";
 import { useFleetStore } from "@/stores/fleet-store";
+import { useDroneManager } from "@/stores/drone-manager";
+import { useConnectDialogStore } from "@/stores/connect-dialog-store";
 import { useAuthStore } from "@/stores/auth-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { LocalStorageBanner } from "@/components/ui/local-storage-banner";
@@ -123,6 +125,8 @@ function CommandShellInner({ children }: { children: React.ReactNode }) {
   const demo = useSettingsStore((s) => s.demoMode);
   const setDemoMode = useSettingsStore((s) => s.setDemoMode);
   const alertCount = useFleetStore((s) => s.alerts.filter((a) => !a.acknowledged).length);
+  const droneCount = useDroneManager((s) => s.drones.size);
+  const openConnectDialog = useConnectDialogStore((s) => s.openDialog);
 
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const convexAvailable = useConvexAvailable();
@@ -211,6 +215,36 @@ function CommandShellInner({ children }: { children: React.ReactNode }) {
 
         {/* Right — Status indicators */}
         <div className={cn("flex items-center gap-3", isElectron && !isLinux && "[-webkit-app-region:no-drag]")}>
+          {/* Main Navbar Connect Drone Button */}
+          <Tooltip
+            content={
+              droneCount > 0
+                ? `${droneCount} drone connected — click to manage or add links`
+                : "Connect drone via Serial, WebSocket, or VPS MQTT"
+            }
+            position="bottom"
+          >
+            <button
+              onClick={openConnectDialog}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-all border shadow-sm cursor-pointer",
+                droneCount > 0
+                  ? "bg-accent-primary/10 border-accent-primary/40 text-accent-primary hover:bg-accent-primary/20"
+                  : "bg-bg-tertiary border-border-default text-text-secondary hover:text-text-primary hover:border-accent-primary/50"
+              )}
+            >
+              <Wifi size={13} className={droneCount > 0 ? "animate-pulse text-accent-primary" : ""} />
+              <span className="hidden sm:inline font-medium">
+                {droneCount > 0 ? "Connected" : "Connect Drone"}
+              </span>
+              {droneCount > 0 && (
+                <span className="w-4 h-4 rounded-full bg-accent-primary text-bg-primary text-[10px] font-bold flex items-center justify-center">
+                  {droneCount}
+                </span>
+              )}
+            </button>
+          </Tooltip>
+
           {/* Ground-station role badge */}
           <RoleBadge />
 

@@ -540,14 +540,16 @@ export function CommandPage() {
 
 
 
-      <CommandFleetStatusBridge enabled={pairedDrones.length > 0} />
-      <CommandFleetMqttBridge
-        pairedDrones={pairedDrones}
-        mqttBrokerUrl={clientConfig?.mqttBrokerUrl}
-      />
-      {cloudMode && <CloudStatusBridge />}
-      {cloudMode && <CloudCommandResultBridge />}
-      {cloudMode && <MqttBridge mqttBrokerUrl={clientConfig?.mqttBrokerUrl} />}
+      {!demo && <CommandFleetStatusBridge enabled={pairedDrones.length > 0} />}
+      {!demo && (
+        <CommandFleetMqttBridge
+          pairedDrones={pairedDrones}
+          mqttBrokerUrl={clientConfig?.mqttBrokerUrl}
+        />
+      )}
+      {!demo && cloudMode && <CloudStatusBridge />}
+      {!demo && cloudMode && <CloudCommandResultBridge />}
+      {!demo && cloudMode && <MqttBridge mqttBrokerUrl={clientConfig?.mqttBrokerUrl} />}
       {/* AgentMavlinkBridge is in CommandShell for cross-tab persistence */}
 
       <PairingDialog

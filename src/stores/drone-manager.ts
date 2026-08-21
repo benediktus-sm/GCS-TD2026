@@ -17,6 +17,8 @@ export interface ConnectionMeta {
   type: "serial" | "websocket" | "mqtt-mavlink";
   baudRate?: number;
   url?: string;
+  deviceId?: string;
+  username?: string;
   portVendorId?: number;
   portProductId?: number;
   presetId?: string;
@@ -131,9 +133,9 @@ export const useDroneManager = create<DroneManagerState>((set, get) => ({
     protocol.getAllParameters().catch(() => { });
 
     // Auto-select if this is the first drone
-    // if (get().drones.size === 1) {
-    //   get().selectDrone(id);
-    // }
+    if (get().drones.size === 1) {
+      get().selectDrone(id);
+    }
 
     // Auto-start recording if enabled in settings
     if (useSettingsStore.getState().autoRecordOnConnect) {

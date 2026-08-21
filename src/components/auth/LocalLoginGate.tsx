@@ -1,16 +1,23 @@
 "use client";
 
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import { useLocalGateStore } from "@/stores/local-gate-store";
 import { findLocalAccount } from "@/lib/auth/local-accounts";
 
+const emptySubscribe = () => () => {};
+const getClientSnapshot = () => true;
+const getServerSnapshot = () => false;
+
 export function LocalLoginGate({ children }: { children: ReactNode }) {
+  const isHydrated = useSyncExternalStore(emptySubscribe, getClientSnapshot, getServerSnapshot);
   const unlocked = useLocalGateStore((s) => s.unlocked);
   const unlockWithAccount = useLocalGateStore((s) => s.unlockWithAccount);
 
   const [name, setName] = useState("");
   const [nim, setNim] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  if (!isHydrated) return null;
 
   if (unlocked) return <>{children}</>;
 
@@ -30,6 +37,7 @@ export function LocalLoginGate({ children }: { children: ReactNode }) {
     <div className="h-dvh w-full flex items-center justify-center bg-bg-primary">
       <form
         onSubmit={handleSubmit}
+        suppressHydrationWarning
         className="w-full max-w-sm rounded-panel border border-border-default bg-bg-secondary p-6 flex flex-col gap-4 shadow-lg shadow-black/40"
       >
         <div className="flex flex-col items-center gap-3 pb-1">
@@ -49,6 +57,7 @@ export function LocalLoginGate({ children }: { children: ReactNode }) {
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
+            suppressHydrationWarning
             className="rounded border border-border-default bg-bg-primary px-2 py-1.5 text-text-primary text-sm outline-none focus:border-accent-primary"
             autoComplete="off"
           />
@@ -59,6 +68,7 @@ export function LocalLoginGate({ children }: { children: ReactNode }) {
             type="text"
             value={nim}
             onChange={(e) => setNim(e.target.value)}
+            suppressHydrationWarning
             className="rounded border border-border-default bg-bg-primary px-2 py-1.5 text-text-primary text-sm outline-none focus:border-accent-primary"
             autoComplete="off"
           />
@@ -68,6 +78,7 @@ export function LocalLoginGate({ children }: { children: ReactNode }) {
 
         <button
           type="submit"
+          suppressHydrationWarning
           className="rounded bg-accent-primary text-bg-primary text-xs font-semibold uppercase tracking-wider py-2 hover:opacity-90 transition-opacity"
         >
           Masuk

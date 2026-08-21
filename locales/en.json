@@ -612,6 +612,7 @@
     "title": "Connect to Drone",
     "usbSerial": "USB Serial",
     "webSocket": "WebSocket",
+    "mqttVps": "MQTT (VPS)",
     "savePreset": "Save Preset",
     "port": "Port",
     "baudRate": "Baud Rate",

@@ -21,6 +21,7 @@ import { useAgentSystemStore } from "@/stores/agent-system-store";
 import { useAgentCapabilitiesStore } from "@/stores/agent-capabilities-store";
 import { useDroneManager } from "@/stores/drone-manager";
 import type { Transport } from "@/lib/protocol/types/transport";
+import { isDemoMode } from "@/lib/utils";
 
 const WS_TIMEOUT_MS = 3000;
 
@@ -37,6 +38,9 @@ export function AgentMavlinkBridge() {
   const connectedDroneIdRef = useRef<string | null>(null);
 
   useEffect(() => {
+    // Skip in demo mode
+    if (isDemoMode()) return;
+
     // Need at least: agent connected + FC connected + (mavlinkUrl OR cloudDeviceId for MQTT)
     if (!connected || !fcConnected || connectingRef.current) return;
     if (!mavlinkUrl && !cloudDeviceId) return;

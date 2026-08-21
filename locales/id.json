@@ -612,6 +612,7 @@
     "title": "Hubungkan ke Drone",
     "usbSerial": "USB Serial",
     "webSocket": "WebSocket",
+    "mqttVps": "MQTT (VPS)",
     "savePreset": "Simpan Preset",
     "port": "Port",
     "baudRate": "Baud Rate",

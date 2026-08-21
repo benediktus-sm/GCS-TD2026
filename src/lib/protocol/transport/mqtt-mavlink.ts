@@ -16,6 +16,25 @@ import type { Transport, TransportEventMap } from "../types/transport";
 const MQTT_WS_URL = "wss://mqtt.altnautica.com/mqtt";
 const CONNECT_TIMEOUT_MS = 10_000;
 
+export interface MqttConnectOptions {
+  username?: string;
+  password?: string;
+  clean?: boolean;
+}
+
+function normalizeMqttWsUrl(rawUrl: string): string {
+  let trimmed = rawUrl.trim();
+  if (!trimmed) return MQTT_WS_URL;
+  if (trimmed.startsWith("mqtt://")) {
+    trimmed = "ws://" + trimmed.slice(7);
+  } else if (trimmed.startsWith("mqtts://")) {
+    trimmed = "wss://" + trimmed.slice(8);
+  } else if (!trimmed.startsWith("ws://") && !trimmed.startsWith("wss://")) {
+    trimmed = "wss://" + trimmed;
+  }
+  return trimmed;
+}
+
 export class MqttMavlinkTransport implements Transport {
   readonly type = "mqtt-mavlink" as const;
 
@@ -37,14 +56,20 @@ export class MqttMavlinkTransport implements Transport {
    * Connect to MQTT broker and subscribe to MAVLink frame topic.
    * @param deviceId — Agent device ID (used in topic path)
    * @param brokerUrl — MQTT WebSocket URL (default: mqtt.altnautica.com)
+   * @param options — Optional credentials (username/password) and options
    */
-  async connect(deviceId: string, brokerUrl?: string): Promise<void> {
+  async connect(
+    deviceId: string,
+    brokerUrl?: string,
+    options?: MqttConnectOptions,
+  ): Promise<void> {
     if (this._connected) {
       throw new Error("Already connected");
     }
 
     this.deviceId = deviceId;
     const topicTx = `ados/${deviceId}/mavlink/tx`;
+    const targetUrl = normalizeMqttWsUrl(brokerUrl || MQTT_WS_URL);
 
     return new Promise<void>(async (resolve, reject) => {
       let resolved = false;
@@ -52,7 +77,7 @@ export class MqttMavlinkTransport implements Transport {
       const timer = setTimeout(() => {
         if (!resolved) {
           resolved = true;
-          try { this.client?.end(true); } catch { /* noop */ }
+          try { (this.client as { end?: (force?: boolean) => void })?.end?.(true); } catch { /* noop */ }
           reject(new Error("MQTT connection timeout"));
         }
       }, CONNECT_TIMEOUT_MS);
@@ -62,21 +87,24 @@ export class MqttMavlinkTransport implements Transport {
 
         // Handle ESM/CJS module resolution (same as MqttBridge.tsx)
         const connectFn = mqttModule.connect
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          ?? (mqttModule.default as any)?.connect
+          ?? (mqttModule.default as { connect?: typeof mqttModule.connect })?.connect
           ?? mqttModule.default;
 
         if (typeof connectFn !== "function") {
           throw new Error("mqtt.connect not found in module");
         }
 
+        const clientOptions: Record<string, unknown> = {
+          protocolVersion: 5,
+          clean: options?.clean ?? true,
+          reconnectPeriod: 5000,
+        };
+        if (options?.username) clientOptions.username = options.username;
+        if (options?.password) clientOptions.password = options.password;
+
         this.client = (connectFn as typeof mqttModule.connect)(
-          brokerUrl || MQTT_WS_URL,
-          {
-            protocolVersion: 5,
-            clean: true,
-            reconnectPeriod: 5000,
-          },
+          targetUrl,
+          clientOptions,
         );
 
         // mqtt.js fires 'connect' on every (re)connect. We resubscribe
