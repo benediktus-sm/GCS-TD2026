@@ -51,7 +51,7 @@ export function TelemetryFreshnessIndicator({ className }: { className?: string 
   } as const;
 
   return (
-    <div className={cn("grid grid-cols-6 gap-1 w-full", className)}>
+    <div className={cn("grid grid-cols-11 gap-0.5 w-full", className)}>
       {DISPLAY_CHANNELS.map(({ key, labelKey, short }) => {
         const freshness = getFreshness(key);
         const label = t(labelKey);
@@ -60,12 +60,12 @@ export function TelemetryFreshnessIndicator({ className }: { className?: string 
             <button
               type="button"
               className={cn(
-                "h-6 px-1 rounded flex items-center justify-center gap-1 border text-[10px] font-mono font-semibold transition-colors cursor-pointer select-none",
+                "h-5 px-0.5 rounded flex items-center justify-center gap-0.5 border text-[8px] font-mono font-bold transition-colors cursor-pointer select-none min-w-0",
                 FRESHNESS_BG[freshness]
               )}
             >
-              <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", FRESHNESS_COLORS[freshness])} />
-              <span className="leading-none font-bold">{short}</span>
+              <span className={cn("w-1 h-1 rounded-full shrink-0", FRESHNESS_COLORS[freshness])} />
+              <span className="leading-none truncate">{short}</span>
             </button>
           </Tooltip>
         );

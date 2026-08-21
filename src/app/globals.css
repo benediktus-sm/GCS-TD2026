@@ -548,7 +548,7 @@ input, select, textarea {
 
 /* Base panel rounding */
 .rounded-panel {
-  border-radius: 4px;
+  border-radius: 8px;
   overflow: hidden;
 }
 

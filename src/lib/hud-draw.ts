@@ -8,21 +8,21 @@
  */
 
 // ── Colors ──────────────────────────────────────────────────────
-export const HUD_GREEN = "#10b981";
+export const HUD_GREEN = "#00ff41";
 export const ARMED_RED = "#ef4444";
-export const DISARMED_GREEN = "#10b981";
-export const BAT_GREEN = "#10b981";
+export const DISARMED_GREEN = "#22c55e";
+export const BAT_GREEN = "#22c55e";
 export const BAT_AMBER = "#f59e0b";
 export const BAT_RED = "#ef4444";
-export const SHADOW = "rgba(0,0,0,0.85)";
-export const FONT = '"JetBrains Mono", monospace';
+export const SHADOW = "rgba(0,0,0,0.8)";
+export const FONT = '"Geist", sans-serif';
 
-// ── Sky/Ground palette (Glass Cockpit ADI) ────────────────────────
-export const SKY_TOP = "#0b1d3a";
-export const SKY_HORIZON = "#18457e";
-export const GROUND_HORIZON = "#403123";
-export const GROUND_BOTTOM = "#20170f";
-export const HORIZON_LINE = "rgba(255, 255, 255, 0.7)";
+// ── Sky/Ground palette (Glass Cockpit) ──────────────────────────
+export const SKY_TOP = "#0a1428";
+export const SKY_HORIZON = "#0f7eecff";
+export const GROUND_HORIZON = "#6fc518ff";
+export const GROUND_BOTTOM = "#1a2510";
+export const HORIZON_LINE = "rgba(255, 255, 255, 0.3)";
 
 // ── Utility ─────────────────────────────────────────────────────
 

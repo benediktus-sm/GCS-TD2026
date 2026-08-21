@@ -50,7 +50,7 @@ export default function DashboardPage() {
       <DroneDetailPanel droneId={selectedDroneId || ""} onClose={() => selectDrone(null)} />
     </div>
     {!immersiveMode && logsCollapsed && (
-      <div className="w-8 shrink-0 flex flex-col h-full border-l border-border-default bg-bg-secondary">
+      <div className="w-8 shrink-0 flex flex-col h-full rounded-panel border border-border-default bg-bg-secondary overflow-hidden">
       <button
         onClick={() => setLogsCollapsed(false)}
         className="flex flex-col items-center gap-1 px-1 py-2 border-b border-border-default hover:bg-bg-tertiary transition-colors cursor-pointer group"
@@ -64,7 +64,7 @@ export default function DashboardPage() {
       </div>
     )}
     {!immersiveMode && (
-      <div className={`w-[384px] shrink-0 flex flex-col h-full border-l border-border-default bg-bg-secondary ${logsCollapsed ? "hidden" : ""}`}>
+      <div className={`w-[384px] shrink-0 flex flex-col h-full rounded-panel border border-border-default bg-bg-secondary overflow-hidden ${logsCollapsed ? "hidden" : ""}`}>
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border-default flex-shrink-0">
         <button
         onClick={() => setLogsCollapsed(true)}

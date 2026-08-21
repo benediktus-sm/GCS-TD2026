@@ -25,16 +25,16 @@ function batteryBarColor(pct: number): string {
 
 function FlightCell({ label, value, unit }: { label: string; value: string; unit: string }) {
   return (
-    <div className="flex flex-col items-center py-2.5 px-1 bg-bg-secondary/90 hover:bg-bg-tertiary/60 transition-colors">
+    <div className="flex flex-col items-center justify-center py-3.5 px-1 bg-bg-secondary hover:bg-bg-tertiary transition-colors">
       <div className="flex items-center gap-1">
-        <span className="text-[9px] font-mono font-bold tracking-widest text-text-tertiary uppercase">
+        <span className="text-[11px] font-mono font-bold tracking-widest text-green-400 uppercase">
           {label}
         </span>
-        <span className="text-[8px] font-mono text-text-tertiary/70 uppercase">
+        <span className="text-[9px] font-mono text-green-500/70 uppercase">
           {unit}
         </span>
       </div>
-      <span className="text-base font-mono font-bold tabular-nums text-text-primary mt-0.5 tracking-tight">
+      <span className="text-2xl font-mono font-bold tabular-nums text-text-primary mt-1 tracking-tight">
         {value}
       </span>
     </div>
@@ -69,12 +69,20 @@ export function TelemetryReadout() {
 
   return (
     <div className={cn("bg-bg-primary transition-opacity duration-200 border-b border-border-default", !isConnected && "opacity-60")}>
-      {/* Primary flight metrics — 4-column avionics tape */}
-      <div className="grid grid-cols-4 divide-x divide-border-default border-b border-border-default">
-        <FlightCell label="ALT" value={altStr} unit="m" />
-        <FlightCell label="SPD" value={speedStr} unit="km/h" />
-        <FlightCell label="HDG" value={headingStr} unit="mag" />
-        <FlightCell label="V/S" value={vsStr} unit="m/s" />
+      {/* Primary flight metrics — High-visibility green bordered 4-cell grid */}
+      <div className="grid grid-cols-4 gap-1.5 p-2 bg-bg-primary">
+        <div className="rounded border-2 border-green-500 overflow-hidden bg-bg-secondary shadow-[0_0_8px_rgba(34,197,94,0.15)]">
+          <FlightCell label="ALT" value={altStr} unit="m" />
+        </div>
+        <div className="rounded border-2 border-green-500 overflow-hidden bg-bg-secondary shadow-[0_0_8px_rgba(34,197,94,0.15)]">
+          <FlightCell label="SPD" value={speedStr} unit="km/h" />
+        </div>
+        <div className="rounded border-2 border-green-500 overflow-hidden bg-bg-secondary shadow-[0_0_8px_rgba(34,197,94,0.15)]">
+          <FlightCell label="HDG" value={headingStr} unit="mag" />
+        </div>
+        <div className="rounded border-2 border-green-500 overflow-hidden bg-bg-secondary shadow-[0_0_8px_rgba(34,197,94,0.15)]">
+          <FlightCell label="V/S" value={vsStr} unit="m/s" />
+        </div>
       </div>
 
       {/* Secondary Avionics Status bar — GPS, battery voltage/current, mode, deck controls */}

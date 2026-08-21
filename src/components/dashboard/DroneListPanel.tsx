@@ -137,8 +137,9 @@ export function DroneListPanel({ collapsed, onToggleCollapse }: DroneListPanelPr
         <div className="w-px h-4 bg-border-default shrink-0" />
 
         {/* Count */}
-        <div className="text-right shrink-0">
-          <span className="text-[9px] text-text-tertiary font-mono">{drones.length}</span>
+        <div className="text-right shrink-0 flex items-center gap-1.5 bg-bg-primary border border-border-default px-2 py-0.5 rounded">
+          <span className="text-[10px] font-mono text-text-tertiary uppercase">FLEET</span>
+          <span className="text-xs font-mono font-bold text-accent-primary tabular-nums">{drones.length}</span>
         </div>
       </div>
     );
@@ -151,7 +152,7 @@ export function DroneListPanel({ collapsed, onToggleCollapse }: DroneListPanelPr
         <span className="text-xs font-mono font-semibold uppercase tracking-wider text-text-secondary">
           {t("title")}
         </span>
-        <span className="text-[10px] text-text-tertiary font-mono bg-bg-tertiary px-1.5 py-0.5 rounded">
+        <span className="text-xs text-accent-primary font-bold font-mono bg-accent-primary/15 border border-accent-primary/30 px-1.5 py-0.5 rounded tabular-nums">
           {drones.length}
         </span>
       </div>
