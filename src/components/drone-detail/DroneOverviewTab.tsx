@@ -50,15 +50,15 @@ interface DroneOverviewTabProps {
 type RightPanel = "map" | "fly";
 type HudSubTab = "quick" | "loadout" | "preflight" | "health" | "vehicle" | "identity" | "stats" | "emergency";
 
-const HUD_SUB_TABS: { id: HudSubTab; label: string; icon: React.ReactNode }[] = [
-  { id: "quick", label: "Quick", icon: <Zap size={12} /> },
-  { id: "loadout", label: "Loadout", icon: <Package size={12} /> },
-  { id: "preflight", label: "Pre-flight", icon: <ClipboardCheck size={12} /> },
-  { id: "health", label: "Health", icon: <Activity size={12} /> },
-  { id: "vehicle", label: "Vehicle", icon: <Cpu size={12} /> },
-  { id: "identity", label: "Identity", icon: <Fingerprint size={12} /> },
-  { id: "stats", label: "Stats", icon: <BarChart2 size={12} /> },
-  { id: "emergency", label: "Emergency", icon: <AlertTriangle size={12} /> },
+const HUD_SUB_TABS: { id: HudSubTab; label: string }[] = [
+  { id: "quick", label: "QUICK" },
+  { id: "loadout", label: "LOADOUT" },
+  { id: "preflight", label: "CHECKLIST" },
+  { id: "health", label: "HEALTH" },
+  { id: "vehicle", label: "VEHICLE" },
+  { id: "identity", label: "IDENTITY" },
+  { id: "stats", label: "STATS" },
+  { id: "emergency", label: "EMERGENCY" },
 ];
 
 export function DroneOverviewTab({ drone }: DroneOverviewTabProps) {
@@ -79,7 +79,7 @@ export function DroneOverviewTab({ drone }: DroneOverviewTabProps) {
       {!immersiveMode && !telemetryCollapsed && (
         <div className="w-[22rem] shrink-0 flex flex-col overflow-y-auto border-r border-border-default">
           {/* Telemetry freshness dots */}
-          <div className="px-3 py-1.5 border-b border-border-default shrink-0">
+          <div className="p-2 border-b border-border-default shrink-0 bg-bg-secondary/40">
             <TelemetryFreshnessIndicator />
           </div>
 
@@ -98,18 +98,17 @@ export function DroneOverviewTab({ drone }: DroneOverviewTabProps) {
                   key={tab.id}
                   onClick={() => setHudSubTab(tab.id)}
                   className={cn(
-                    "flex items-center gap-1 px-2 py-1 text-[10px] font-mono font-medium rounded transition-all shrink-0 cursor-pointer",
+                    "px-2.5 py-1 text-[10px] font-mono tracking-wider transition-colors rounded shrink-0 cursor-pointer font-medium",
                     active
                       ? isDanger
                         ? "bg-status-error/20 text-status-error border border-status-error/40 font-bold"
-                        : "bg-bg-tertiary text-text-primary border border-border-strong font-semibold shadow-xs"
+                        : "bg-accent-primary/15 text-accent-primary border border-accent-primary/30 font-bold"
                       : isDanger
-                      ? "text-status-error/70 hover:text-status-error hover:bg-status-error/10"
-                      : "text-text-tertiary hover:text-text-secondary hover:bg-bg-tertiary/50"
+                      ? "text-status-error/80 hover:text-status-error hover:bg-status-error/10 border border-transparent"
+                      : "text-text-tertiary hover:text-text-primary hover:bg-bg-tertiary/40 border border-transparent"
                   )}
                 >
-                  {tab.icon}
-                  <span>{tab.label}</span>
+                  {tab.label}
                 </button>
               );
             })}

@@ -127,26 +127,30 @@ export function DroneDetailPanel({ droneId, onClose }: DroneDetailPanelProps) {
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden">
-      {/* Merged header + tabs bar */}
+      {/* Merged header + tabs bar — Tactical Avionics MFD Header */}
       {!immersiveMode && (
-        <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border-default bg-bg-secondary flex-shrink-0">
-          <h1 className="text-sm font-semibold text-text-primary shrink-0">{displayName}</h1>
-          <DroneStatusBadge status={drone.status} />
-          {drone.id !== "offline-drone" && (
-            <Button
-              variant="ghost"
-              size="sm"
-              icon={<X size={14} />}
-              onClick={onClose}
-            />
-          )}
+        <div className="flex items-center gap-2 px-3 py-1 bg-bg-secondary border-b border-border-default flex-shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-xs font-mono font-bold text-text-primary tracking-wide">{displayName}</span>
+            <DroneStatusBadge status={drone.status} />
+            {drone.id !== "offline-drone" && (
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={<X size={12} />}
+                className="h-6 w-6 p-0"
+                onClick={onClose}
+              />
+            )}
+          </div>
 
-          <div className="w-px h-5 bg-border-default shrink-0" />
+          <div className="w-px h-4 bg-border-default shrink-0 mx-1" />
 
+          {/* MFD Navigation Segment Bar */}
           <div
             role="tablist"
             aria-label="Drone detail"
-            className="flex items-center self-stretch"
+            className="flex items-center gap-1 self-stretch"
           >
             {tabs.map((tab) => (
               <button
@@ -158,8 +162,6 @@ export function DroneDetailPanel({ droneId, onClose }: DroneDetailPanelProps) {
                 tabIndex={visibleTab === tab.id ? 0 : -1}
                 onClick={() => setActiveTab(tab.id)}
                 onKeyDown={(e) => {
-                  // Roving-tabindex + arrow-key nav per WAI-ARIA tab
-                  // pattern. Left/Right/Home/End move + activate.
                   const idsArr = tabs.map((tt) => tt.id);
                   const idx = idsArr.indexOf(visibleTab as DroneDetailTab);
                   let nextIdx = idx;
@@ -184,10 +186,10 @@ export function DroneDetailPanel({ droneId, onClose }: DroneDetailPanelProps) {
                   });
                 }}
                 className={cn(
-                  "self-stretch flex items-center px-2.5 text-xs font-medium transition-colors cursor-pointer shrink-0 -mb-px border-b-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary",
+                  "flex items-center px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider rounded transition-colors cursor-pointer shrink-0 border",
                   visibleTab === tab.id
-                    ? "text-accent-primary border-accent-primary"
-                    : "text-text-secondary hover:text-text-primary border-transparent"
+                    ? "text-accent-primary bg-accent-primary/15 border-accent-primary/40 font-bold"
+                    : "text-text-tertiary hover:text-text-primary hover:bg-bg-tertiary/40 border-transparent"
                 )}
               >
                 {tab.label}
@@ -203,7 +205,8 @@ export function DroneDetailPanel({ droneId, onClose }: DroneDetailPanelProps) {
               <Button
                 variant="danger"
                 size="sm"
-                icon={<RotateCcw size={12} />}
+                icon={<RotateCcw size={11} />}
+                className="h-6 px-2 text-[10px] font-mono font-bold tracking-wider uppercase border border-status-error/40 text-status-error hover:bg-status-error/15"
                 onClick={() => {
                   const protocol = useDroneManager.getState().getSelectedProtocol();
                   if (protocol) protocol.reboot();

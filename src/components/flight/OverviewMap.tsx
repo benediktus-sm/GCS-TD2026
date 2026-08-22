@@ -280,8 +280,8 @@ export function OverviewMap() {
   );
 
   return (
-    <div className="relative w-full h-full border border-border-default overflow-hidden bg-[#0a0a0a] isolate">
-      <span className={`absolute top-2 left-2 z-[1000] text-[10px] font-mono bg-bg-primary/80 backdrop-blur-md rounded px-1.5 py-0.5 border border-border-strong shadow-lg ${fixType >= 3 ? "text-status-success" : fixType >= 2 ? "text-status-warning" : "text-status-error"}`}>
+    <div className="relative w-full h-full border border-border-default overflow-hidden bg-bg-primary isolate">
+      <span className={`absolute top-2 left-2 z-[1000] text-[10px] font-mono bg-bg-primary/95 rounded px-2 py-0.5 border border-border-default shadow-xs ${fixType >= 3 ? "text-status-success font-semibold" : fixType >= 2 ? "text-status-warning" : "text-status-error"}`}>
         {fixLabel} | {satellites} SAT
       </span>
 
@@ -290,7 +290,7 @@ export function OverviewMap() {
       {/* No GPS overlay */}
       {!hasGps && (
         <div className="absolute inset-0 z-[1000] flex items-center justify-center pointer-events-none">
-          <span className="text-sm font-mono font-semibold text-text-secondary bg-bg-primary/90 backdrop-blur-md px-3 py-1.5 border border-border-strong rounded shadow-lg">
+          <span className="text-xs font-mono font-bold tracking-widest text-status-warning bg-bg-primary/95 px-3 py-1.5 border border-border-strong rounded uppercase">
             NO GPS FIX
           </span>
         </div>
@@ -423,13 +423,13 @@ export function OverviewMap() {
       )}
 
       {/* Follow toggle + plan overlay + measure -- bottom right */}
-      <div className="absolute bottom-2 right-2 z-[1000] flex items-center gap-1 bg-bg-primary/80 backdrop-blur-md rounded-lg p-1 shadow-lg border border-border-strong">
+      <div className="absolute bottom-2 right-2 z-[1000] flex items-center gap-1 bg-bg-secondary/95 rounded p-0.5 border border-border-default">
         <button
           onClick={() => {
             setMeasureActive((v) => !v);
           }}
           className={`text-[10px] font-mono px-2 py-1 transition-colors flex items-center gap-1 rounded ${measureActive
-              ? "text-[#3A82FF] bg-[#3A82FF]/10"
+              ? "text-accent-primary bg-accent-primary/15 font-semibold"
               : "text-text-secondary hover:text-text-primary"
             }`}
           title="Measure distance and bearing (click points, double-click to finish)"
@@ -440,7 +440,7 @@ export function OverviewMap() {
         <button
           onClick={() => setShowPlannedPath((v) => !v)}
           className={`text-[10px] font-mono px-2 py-1 transition-colors rounded ${showPlannedPath
-              ? "text-[#3A82FF] bg-[#3A82FF]/10"
+              ? "text-accent-primary bg-accent-primary/15 font-semibold"
               : "text-text-secondary hover:text-text-primary"
             }`}
         >
@@ -449,7 +449,7 @@ export function OverviewMap() {
         <button
           onClick={() => setFollow((f) => !f)}
           className={`text-[10px] font-mono px-2 py-1 transition-colors rounded ${follow
-              ? "text-[#3A82FF] bg-[#3A82FF]/10"
+              ? "text-accent-primary bg-accent-primary/15 font-semibold"
               : "text-text-secondary hover:text-text-primary"
             }`}
         >
@@ -459,7 +459,7 @@ export function OverviewMap() {
 
       {/* Coordinates -- bottom left */}
       {dronePos && (
-        <div className="absolute bottom-2 left-2 z-[1000] text-[10px] font-mono text-text-secondary bg-bg-primary/80 backdrop-blur-md px-2 py-1 border border-border-strong rounded shadow-lg">
+        <div className="absolute bottom-2 left-2 z-[1000] text-[10px] font-mono text-text-secondary bg-bg-secondary/95 px-2 py-0.5 border border-border-default rounded">
           {dronePos[0].toFixed(6)}, {dronePos[1].toFixed(6)}
         </div>
       )}

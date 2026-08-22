@@ -40,27 +40,27 @@ function DroneMiniCard({
       onClick={() => onClick?.(drone.id)}
       title={`${displayName} — ${drone.status.replace("_", " ")} — ${batteryPct}%`}
       className={cn(
-        "h-9 px-2.5 rounded-lg flex items-center gap-2 border transition-all cursor-pointer shrink-0 text-left",
-        "bg-bg-primary/80 hover:bg-bg-primary border-border-default hover:border-border-strong",
-        selected && "border-accent-primary bg-accent-primary/10 shadow-sm",
-        isArmed && "ring-1 ring-status-warning/50"
+        "h-8 px-2 rounded flex items-center gap-2 border transition-colors cursor-pointer shrink-0 text-left",
+        "bg-bg-primary border-border-default hover:border-border-strong",
+        selected && "border-accent-primary bg-accent-primary/10",
+        isArmed && "ring-1 ring-status-warning"
       )}
     >
       <StatusDot status={statusToDot[drone.status]} className="shrink-0" />
       <div className="flex flex-col justify-center min-w-0">
         <div className="flex items-center gap-1.5 leading-none">
-          <span className="text-xs font-semibold text-text-primary truncate max-w-[100px]">
+          <span className="text-xs font-mono font-semibold text-text-primary truncate max-w-[100px]">
             {displayName}
           </span>
           <span
             className={cn(
-              "text-[8px] px-1 py-0.2 rounded font-mono uppercase font-bold tracking-tight shrink-0",
+              "text-[8px] px-1 py-0.2 rounded-xs font-mono uppercase font-bold tracking-tight shrink-0",
               isArmed
                 ? "bg-status-warning/20 text-status-warning"
                 : "bg-bg-tertiary text-text-tertiary"
             )}
           >
-            {isArmed ? "ARM" : "DISARM"}
+            {isArmed ? "ARM" : "DIS"}
           </span>
         </div>
         <div className="flex items-center gap-2 leading-none mt-1 text-[9px] text-text-tertiary font-mono">
@@ -98,10 +98,10 @@ export function DroneListPanel({ collapsed, onToggleCollapse }: DroneListPanelPr
 
   if (collapsed) {
     return (
-      <div className="w-full flex flex-row items-center gap-3 px-3 py-1.5 bg-bg-secondary h-11 border-b border-border-default shrink-0">
+      <div className="w-full flex flex-row items-center gap-3 px-3 py-1.5 bg-bg-secondary h-10 border-b border-border-default shrink-0">
         {/* Header: label + add + expand */}
         <div className="flex items-center gap-2 shrink-0">
-          <span className="text-[9px] font-semibold uppercase tracking-wider text-text-tertiary">
+          <span className="text-[9px] font-mono font-semibold uppercase tracking-wider text-text-tertiary">
             {t("title")}
           </span>
           <button
@@ -137,29 +137,30 @@ export function DroneListPanel({ collapsed, onToggleCollapse }: DroneListPanelPr
         <div className="w-px h-4 bg-border-default shrink-0" />
 
         {/* Count */}
-        <div className="text-right shrink-0">
-          <span className="text-[9px] text-text-tertiary font-mono">{drones.length}</span>
+        <div className="text-right shrink-0 flex items-center gap-1.5 bg-bg-primary border border-border-default px-2 py-0.5 rounded">
+          <span className="text-[10px] font-mono text-text-tertiary uppercase">FLEET</span>
+          <span className="text-xs font-mono font-bold text-accent-primary tabular-nums">{drones.length}</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="w-full flex flex-row items-center gap-3 px-3 py-1.5 bg-bg-secondary h-13 border-b border-border-default shrink-0">
+    <div className="w-full flex flex-row items-center gap-3 px-3 py-1.5 bg-bg-secondary h-11 border-b border-border-default shrink-0">
       {/* Left Header */}
       <div className="flex items-center gap-2 shrink-0">
-        <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
+        <span className="text-xs font-mono font-semibold uppercase tracking-wider text-text-secondary">
           {t("title")}
         </span>
-        <span className="text-[10px] text-text-tertiary font-mono bg-bg-tertiary px-1.5 py-0.5 rounded">
+        <span className="text-xs text-accent-primary font-bold font-mono bg-accent-primary/15 border border-accent-primary/30 px-1.5 py-0.5 rounded tabular-nums">
           {drones.length}
         </span>
       </div>
 
-      <div className="w-px h-5 bg-border-default shrink-0" />
+      <div className="w-px h-4 bg-border-default shrink-0" />
 
       {/* Middle: Horizontal scrollable drone list */}
-      <div className="flex-1 overflow-x-auto overflow-y-hidden flex flex-row items-center gap-2 min-w-0 py-0.5">
+      <div className="flex-1 overflow-x-auto overflow-y-hidden flex flex-row items-center gap-1.5 min-w-0 py-0.5">
         {filtered.map((drone) => (
           <DroneMiniCard
             key={drone.id}
@@ -169,41 +170,41 @@ export function DroneListPanel({ collapsed, onToggleCollapse }: DroneListPanelPr
           />
         ))}
         {filtered.length === 0 && (
-          <div className="text-xs text-text-tertiary py-1">
+          <div className="text-xs text-text-tertiary font-mono py-1">
             {search ? t("noMatch") : t("noDrones")}
           </div>
         )}
       </div>
 
-      <div className="w-px h-5 bg-border-default shrink-0" />
+      <div className="w-px h-4 bg-border-default shrink-0" />
 
       {/* Right Controls: Search bar, Add, Collapse */}
       <div className="flex items-center gap-2 shrink-0">
         {/* Search Bar - aligned to the right */}
-        <div className="flex items-center gap-1.5 px-2.5 py-1 glass rounded-full shadow-inner w-44">
-          <Search size={12} className="text-text-tertiary shrink-0" />
+        <div className="flex items-center gap-1.5 px-2 py-0.5 bg-bg-primary border border-border-default rounded w-40">
+          <Search size={11} className="text-text-tertiary shrink-0" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={t("searchDrones")}
-            className="w-full bg-transparent text-xs text-text-primary placeholder:text-text-tertiary outline-none"
+            className="w-full bg-transparent text-[11px] font-mono text-text-primary placeholder:text-text-tertiary outline-none"
           />
         </div>
 
         <button
           onClick={openDialog}
-          className="w-7 h-7 flex items-center justify-center bg-accent-primary/10 hover:bg-accent-primary transition-colors cursor-pointer group rounded"
+          className="w-6 h-6 flex items-center justify-center bg-accent-primary/10 hover:bg-accent-primary transition-colors cursor-pointer group rounded"
           title={t("addDrone")}
         >
-          <Plus size={13} className="text-accent-primary group-hover:text-bg-primary transition-colors" />
+          <Plus size={12} className="text-accent-primary group-hover:text-bg-primary transition-colors" />
         </button>
 
         <button
           onClick={onToggleCollapse}
-          className="w-7 h-7 flex items-center justify-center hover:bg-bg-tertiary transition-colors cursor-pointer group rounded"
+          className="w-6 h-6 flex items-center justify-center hover:bg-bg-tertiary transition-colors cursor-pointer group rounded"
           title={t("collapsePanel")}
         >
-          <ChevronUp size={13} className="text-text-tertiary group-hover:text-text-secondary transition-colors" />
+          <ChevronUp size={12} className="text-text-tertiary group-hover:text-text-secondary transition-colors" />
         </button>
       </div>
     </div>
